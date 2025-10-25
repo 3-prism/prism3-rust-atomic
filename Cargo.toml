@@ -1,0 +1,51 @@
+[package]
+name = "prism3-rust-atomic"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.70"
+authors = ["Hu Haixing <starfish.hu@gmail.com>"]
+license = "Apache-2.0"
+repository = "https://github.com/3-prism/rust-common"
+description = "User-friendly atomic operations wrapper providing JDK-like atomic API"
+homepage = "https://github.com/3-prism/rust-common"
+documentation = "https://docs.rs/prism3-rust-atomic"
+readme = "README.md"
+keywords = ["atomic", "concurrent", "lock-free", "thread-safe", "prism3"]
+categories = ["concurrency", "data-structures"]
+exclude = [
+    "coverage.sh",
+    "COVERAGE.md",
+    "COVERAGE.zh_CN.md",
+    ".circleci/*",
+    "ci-check.sh",
+    ".llvm-cov.toml",
+    ".cargo-audit.toml.example",
+]
+
+[lib]
+name = "prism3_atomic"
+doctest = false
+
+[dependencies]
+
+[dev-dependencies]
+# For concurrent testing
+# loom = "0.7"
+
+# For performance benchmarking
+# criterion = "0.5"
+
+# [[bench]]
+# name = "atomic_bench"
+# harness = false
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+
+[profile.bench]
+opt-level = 3
+lto = true
+codegen-units = 1
+
