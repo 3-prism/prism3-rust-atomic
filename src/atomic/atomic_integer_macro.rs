@@ -575,12 +575,12 @@ macro_rules! impl_atomic_integer {
             #[doc = concat!("use prism3_rust_concurrent::atomic::", stringify!($name), ";")]
             ///
             #[doc = concat!("let atomic = ", stringify!($name), "::new(0b1111);")]
-            /// let old = atomic.get_and_bitand(0b1100);
+            /// let old = atomic.get_and_bit_and(0b1100);
             /// assert_eq!(old, 0b1111);
             /// assert_eq!(atomic.get(), 0b1100);
             /// ```
             #[inline]
-            pub fn get_and_bitand(&self, value: $value_type) -> $value_type {
+            pub fn get_and_bit_and(&self, value: $value_type) -> $value_type {
                 self.inner.fetch_and(value, Ordering::AcqRel)
             }
 
@@ -602,12 +602,12 @@ macro_rules! impl_atomic_integer {
             #[doc = concat!("use prism3_rust_concurrent::atomic::", stringify!($name), ";")]
             ///
             #[doc = concat!("let atomic = ", stringify!($name), "::new(0b1100);")]
-            /// let old = atomic.get_and_bitor(0b0011);
+            /// let old = atomic.get_and_bit_or(0b0011);
             /// assert_eq!(old, 0b1100);
             /// assert_eq!(atomic.get(), 0b1111);
             /// ```
             #[inline]
-            pub fn get_and_bitor(&self, value: $value_type) -> $value_type {
+            pub fn get_and_bit_or(&self, value: $value_type) -> $value_type {
                 self.inner.fetch_or(value, Ordering::AcqRel)
             }
 
@@ -629,13 +629,67 @@ macro_rules! impl_atomic_integer {
             #[doc = concat!("use prism3_rust_concurrent::atomic::", stringify!($name), ";")]
             ///
             #[doc = concat!("let atomic = ", stringify!($name), "::new(0b1100);")]
-            /// let old = atomic.get_and_bitxor(0b0110);
+            /// let old = atomic.get_and_bit_xor(0b0110);
             /// assert_eq!(old, 0b1100);
             /// assert_eq!(atomic.get(), 0b1010);
             /// ```
             #[inline]
-            pub fn get_and_bitxor(&self, value: $value_type) -> $value_type {
+            pub fn get_and_bit_xor(&self, value: $value_type) -> $value_type {
                 self.inner.fetch_xor(value, Ordering::AcqRel)
+            }
+
+            /// Performs bitwise NOT, returning the old value.
+            ///
+            /// This is a convenience method equivalent to
+            /// `get_and_bit_xor(-1)`. Uses `AcqRel` ordering.
+            ///
+            /// # Returns
+            ///
+            /// The old value before the operation.
+            ///
+            /// # Example
+            ///
+            /// ```rust
+            #[doc = concat!("use prism3_rust_concurrent::atomic::", stringify!($name), ";")]
+            ///
+            #[doc = concat!("let atomic = ", stringify!($name), "::new(0b1010_0101);")]
+            /// let old = atomic.get_and_bit_not();
+            /// assert_eq!(old, 0b1010_0101);
+            #[doc = concat!("assert_eq!(atomic.get(), !0b1010_0101_", stringify!($value_type), ");")]
+            /// ```
+            ///
+            /// # Note
+            ///
+            /// This method is implemented using `fetch_xor(-1)` because
+            /// hardware and LLVM do not provide a native atomic NOT
+            /// instruction. The compiler will optimize this into
+            /// efficient machine code.
+            #[inline]
+            pub fn get_and_bit_not(&self) -> $value_type {
+                self.inner.fetch_xor(!0, Ordering::AcqRel)
+            }
+
+            /// Performs bitwise NOT, returning the new value.
+            ///
+            /// This is a convenience method that performs bitwise NOT
+            /// and returns the result. Uses `AcqRel` ordering.
+            ///
+            /// # Returns
+            ///
+            /// The new value after the operation.
+            ///
+            /// # Example
+            ///
+            /// ```rust
+            #[doc = concat!("use prism3_rust_concurrent::atomic::", stringify!($name), ";")]
+            ///
+            #[doc = concat!("let atomic = ", stringify!($name), "::new(0b1010_0101);")]
+            /// let new = atomic.bit_not_and_get();
+            #[doc = concat!("assert_eq!(new, !0b1010_0101_", stringify!($value_type), ");")]
+            /// ```
+            #[inline]
+            pub fn bit_not_and_get(&self) -> $value_type {
+                !self.inner.fetch_xor(!0, Ordering::AcqRel)
             }
 
             /// Updates the value using a function, returning the old value.
