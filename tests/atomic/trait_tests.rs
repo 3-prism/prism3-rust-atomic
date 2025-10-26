@@ -209,7 +209,7 @@ fn test_atomic_integer_trait_i8() {
     assert_eq!(atomic.get(), 5);
 
     atomic.set(0b0101);
-    atomic.get_and_bitand(0b0011);
+    atomic.get_and_bit_and(0b0011);
     assert_eq!(atomic.get(), 0b0001);
 }
 
@@ -246,7 +246,7 @@ fn test_atomic_integer_trait_i64() {
     atomic.add_and_get(99);
     assert_eq!(atomic.get(), 100);
 
-    atomic.get_and_bitor(0b1111);
+    atomic.get_and_bit_or(0b1111);
     assert_eq!(atomic.get() & 0b1111, 0b1111);
 }
 
@@ -258,7 +258,7 @@ fn test_atomic_integer_trait_usize() {
     }
     assert_eq!(atomic.get(), 10);
 
-    atomic.get_and_bitxor(0b1010);
+    atomic.get_and_bit_xor(0b1010);
     // Result depends on platform, just check it doesn't panic
     let _ = atomic.get();
 }

@@ -148,27 +148,54 @@ macro_rules! test_atomic_integer {
             }
 
             #[test]
-            fn test_get_and_bitand() {
+            fn test_get_and_bit_and() {
                 let atomic = <$atomic_type>::new(0b1111);
-                let old = atomic.get_and_bitand(0b1100);
+                let old = atomic.get_and_bit_and(0b1100);
                 assert_eq!(old, 0b1111);
                 assert_eq!(atomic.get(), 0b1100);
             }
 
             #[test]
-            fn test_get_and_bitor() {
+            fn test_get_and_bit_or() {
                 let atomic = <$atomic_type>::new(0b1100);
-                let old = atomic.get_and_bitor(0b0011);
+                let old = atomic.get_and_bit_or(0b0011);
                 assert_eq!(old, 0b1100);
                 assert_eq!(atomic.get(), 0b1111);
             }
 
             #[test]
-            fn test_get_and_bitxor() {
+            fn test_get_and_bit_xor() {
                 let atomic = <$atomic_type>::new(0b1100);
-                let old = atomic.get_and_bitxor(0b0110);
+                let old = atomic.get_and_bit_xor(0b0110);
                 assert_eq!(old, 0b1100);
                 assert_eq!(atomic.get(), 0b1010);
+            }
+
+            #[test]
+            fn test_get_and_bit_not() {
+                let value: $value_type = 42;
+                let atomic = <$atomic_type>::new(value);
+                let old = atomic.get_and_bit_not();
+                assert_eq!(old, value);
+                assert_eq!(atomic.get(), !value);
+            }
+
+            #[test]
+            fn test_bit_not_and_get() {
+                let value: $value_type = 42;
+                let atomic = <$atomic_type>::new(value);
+                let new = atomic.bit_not_and_get();
+                assert_eq!(new, !value);
+                assert_eq!(atomic.get(), !value);
+            }
+
+            #[test]
+            fn test_bit_not_twice() {
+                let value: $value_type = 42;
+                let atomic = <$atomic_type>::new(value);
+                atomic.get_and_bit_not();
+                atomic.get_and_bit_not();
+                assert_eq!(atomic.get(), value);
             }
 
             #[test]
@@ -584,13 +611,13 @@ macro_rules! test_atomic_integer {
             #[test]
             fn test_bitwise_combinations() {
                 let atomic = <$atomic_type>::new(0b1111);
-                atomic.get_and_bitand(0b1100);
+                atomic.get_and_bit_and(0b1100);
                 assert_eq!(atomic.get(), 0b1100);
 
-                atomic.get_and_bitor(0b0011);
+                atomic.get_and_bit_or(0b0011);
                 assert_eq!(atomic.get(), 0b1111);
 
-                atomic.get_and_bitxor(0b0101);
+                atomic.get_and_bit_xor(0b0101);
                 assert_eq!(atomic.get(), 0b1010);
             }
 

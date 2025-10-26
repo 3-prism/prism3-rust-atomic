@@ -403,7 +403,7 @@ fn test_concurrent_bitwise() {
         let atomic = atomic.clone();
         let handle = thread::spawn(move || {
             let bit = 1u32 << (i % 32);
-            atomic.get_and_bitor(bit);
+            atomic.get_and_bit_or(bit);
         });
         handles.push(handle);
     }
