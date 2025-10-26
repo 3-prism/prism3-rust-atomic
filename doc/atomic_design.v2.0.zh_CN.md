@@ -520,13 +520,20 @@ impl AtomicI32 {
     // ==================== 位运算操作 ====================
 
     /// 原子按位与，返回旧值
-    pub fn get_and_bitand(&self, value: i32) -> i32;
+    pub fn get_and_bit_and(&self, value: i32) -> i32;
 
     /// 原子按位或，返回旧值
-    pub fn get_and_bitor(&self, value: i32) -> i32;
+    pub fn get_and_bit_or(&self, value: i32) -> i32;
 
     /// 原子按位异或，返回旧值
-    pub fn get_and_bitxor(&self, value: i32) -> i32;
+    pub fn get_and_bit_xor(&self, value: i32) -> i32;
+
+    /// 原子按位取反，返回旧值
+    ///
+    /// 注意：此方法通过 `get_and_bit_xor(-1)` 实现，因为硬件和
+    /// LLVM 没有提供原生的原子位取反指令。编译器会将其优化为
+    /// 高效的机器码。
+    pub fn get_and_bit_not(&self) -> i32;
 
     // ==================== 函数式更新操作 ====================
 
@@ -2312,9 +2319,10 @@ cargo asm --release prism3_rust_concurrent::atomic::AtomicI32::get
 | | `updateAndGet(IntUnaryOperator f)` (Java 8+) | `update_and_get(f)` | ✅ | 函数更新，返回新值 |
 | | `getAndAccumulate(int x, IntBinaryOperator f)` (Java 8+) | `get_and_accumulate(x, f)` | ✅ | 累积，返回旧值 |
 | | `accumulateAndGet(int x, IntBinaryOperator f)` (Java 8+) | `accumulate_and_get(x, f)` | ✅ | 累积，返回新值 |
-| **位运算** | - | `get_and_bitand(value)` | ✅ | 按位与（Rust 特有）|
-| | - | `get_and_bitor(value)` | ✅ | 按位或（Rust 特有）|
-| | - | `get_and_bitxor(value)` | ✅ | 按位异或（Rust 特有）|
+| **位运算** | - | `get_and_bit_and(value)` | ✅ | 按位与（Rust 特有）|
+| | - | `get_and_bit_or(value)` | ✅ | 按位或（Rust 特有）|
+| | - | `get_and_bit_xor(value)` | ✅ | 按位异或（Rust 特有）|
+| | - | `get_and_bit_not()` | ✅ | 按位取反（Rust 特有）|
 | **最大/最小值** | - | `get_and_max(value)` | ✅ | 取最大值（Rust 特有）|
 | | - | `max_and_get(value)` | ✅ | 取最大值，返回新值 |
 | | - | `get_and_min(value)` | ✅ | 取最小值（Rust 特有）|
