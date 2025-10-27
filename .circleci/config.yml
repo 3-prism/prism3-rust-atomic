@@ -35,6 +35,9 @@ jobs:
           name: Check code format
           command: cargo fmt -- --check
       - run:
+          name: Install clippy component
+          command: rustup component add clippy
+      - run:
           name: Run clippy (with dependency caching)
           command: |
             # Use cargo check first to build dependencies, then clippy
