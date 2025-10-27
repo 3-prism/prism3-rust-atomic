@@ -93,26 +93,10 @@ macro_rules! test_atomic_integer {
             }
 
             #[test]
-            fn test_fetch_inc_and_get() {
-                let atomic = <$atomic_type>::new(10);
-                let new = atomic.fetch_inc_and_get();
-                assert_eq!(new, 11);
-                assert_eq!(atomic.load(), 11);
-            }
-
-            #[test]
             fn test_get_and_decrement() {
                 let atomic = <$atomic_type>::new(10);
                 let old = atomic.fetch_dec();
                 assert_eq!(old, 10);
-                assert_eq!(atomic.load(), 9);
-            }
-
-            #[test]
-            fn test_fetch_dec_and_get() {
-                let atomic = <$atomic_type>::new(10);
-                let new = atomic.fetch_dec_and_get();
-                assert_eq!(new, 9);
                 assert_eq!(atomic.load(), 9);
             }
 
@@ -125,26 +109,10 @@ macro_rules! test_atomic_integer {
             }
 
             #[test]
-            fn test_fetch_add_and_get() {
-                let atomic = <$atomic_type>::new(10);
-                let new = atomic.fetch_add_and_get(5);
-                assert_eq!(new, 15);
-                assert_eq!(atomic.load(), 15);
-            }
-
-            #[test]
             fn test_get_and_sub() {
                 let atomic = <$atomic_type>::new(10);
                 let old = atomic.fetch_sub(3);
                 assert_eq!(old, 10);
-                assert_eq!(atomic.load(), 7);
-            }
-
-            #[test]
-            fn test_fetch_sub_and_get() {
-                let atomic = <$atomic_type>::new(10);
-                let new = atomic.fetch_sub_and_get(3);
-                assert_eq!(new, 7);
                 assert_eq!(atomic.load(), 7);
             }
 
@@ -238,15 +206,6 @@ macro_rules! test_atomic_integer {
             }
 
             #[test]
-            fn test_bit_not_and_get() {
-                let value: $value_type = 42;
-                let atomic = <$atomic_type>::new(value);
-                let new = atomic.bit_not_and_get();
-                assert_eq!(new, !value);
-                assert_eq!(atomic.load(), !value);
-            }
-
-            #[test]
             fn test_get_and_update() {
                 let atomic = <$atomic_type>::new(10);
                 let old = atomic.fetch_update(|x| x * 2);
@@ -272,35 +231,11 @@ macro_rules! test_atomic_integer {
             }
 
             #[test]
-            fn test_fetch_max_and_get() {
-                let atomic = <$atomic_type>::new(10);
-                let new = atomic.fetch_max_and_get(20);
-                assert_eq!(new, 20);
-                assert_eq!(atomic.load(), 20);
-
-                let new = atomic.fetch_max_and_get(15);
-                assert_eq!(new, 20);
-                assert_eq!(atomic.load(), 20);
-            }
-
-            #[test]
             fn test_get_and_min() {
                 let atomic = <$atomic_type>::new(10);
                 atomic.fetch_min(5);
                 assert_eq!(atomic.load(), 5);
                 atomic.fetch_min(8);
-                assert_eq!(atomic.load(), 5);
-            }
-
-            #[test]
-            fn test_fetch_min_and_get() {
-                let atomic = <$atomic_type>::new(10);
-                let new = atomic.fetch_min_and_get(5);
-                assert_eq!(new, 5);
-                assert_eq!(atomic.load(), 5);
-
-                let new = atomic.fetch_min_and_get(8);
-                assert_eq!(new, 5);
                 assert_eq!(atomic.load(), 5);
             }
 
