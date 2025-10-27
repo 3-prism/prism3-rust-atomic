@@ -20,16 +20,16 @@ fn main() {
     // Example 1: Basic counter operations
     println!("1. Basic Counter Operations:");
     let counter = AtomicI32::new(0);
-    println!("   Initial value: {}", counter.get());
+    println!("   Initial value: {}", counter.load());
 
-    counter.increment_and_get();
-    println!("   After increment: {}", counter.get());
+    counter.fetch_inc();
+    println!("   After increment: {}", counter.load());
 
-    counter.add_and_get(5);
-    println!("   After adding 5: {}", counter.get());
+    counter.fetch_add(5);
+    println!("   After adding 5: {}", counter.load());
 
-    counter.decrement_and_get();
-    println!("   After decrement: {}", counter.get());
+    counter.fetch_dec();
+    println!("   After decrement: {}", counter.load());
 
     // Example 2: Multi-threaded counter
     println!("\n2. Multi-threaded Counter:");
@@ -42,7 +42,7 @@ fn main() {
         let counter = counter.clone();
         let handle = thread::spawn(move || {
             for _ in 0..increments_per_thread {
-                counter.increment_and_get();
+                counter.fetch_inc();
             }
             println!("   Thread {} completed", i);
         });
@@ -55,49 +55,49 @@ fn main() {
 
     println!(
         "   Final count: {} (expected: {})",
-        counter.get(),
+        counter.load(),
         num_threads * increments_per_thread
     );
 
     // Example 3: Compare-and-swap
     println!("\n3. Compare-and-Swap:");
     let counter = AtomicI32::new(10);
-    println!("   Initial value: {}", counter.get());
+    println!("   Initial value: {}", counter.load());
 
-    match counter.compare_and_set(10, 20) {
-        Ok(_) => println!("   CAS succeeded: value is now {}", counter.get()),
+    match counter.compare_set(10, 20) {
+        Ok(_) => println!("   CAS succeeded: value is now {}", counter.load()),
         Err(actual) => println!("   CAS failed: actual value was {}", actual),
     }
 
-    match counter.compare_and_set(10, 30) {
-        Ok(_) => println!("   CAS succeeded: value is now {}", counter.get()),
+    match counter.compare_set(10, 30) {
+        Ok(_) => println!("   CAS succeeded: value is now {}", counter.load()),
         Err(actual) => println!("   CAS failed: actual value was {}", actual),
     }
 
     // Example 4: Functional updates
     println!("\n4. Functional Updates:");
     let counter = AtomicI32::new(5);
-    println!("   Initial value: {}", counter.get());
+    println!("   Initial value: {}", counter.load());
 
-    let old = counter.get_and_update(|x| x * 2);
-    println!("   After doubling - old: {}, new: {}", old, counter.get());
+    let old = counter.fetch_update(|x| x * 2);
+    println!("   After doubling - old: {}, new: {}", old, counter.load());
 
-    let new = counter.update_and_get(|x| x + 10);
+    let new = counter.fetch_update(|x| x + 10);
     println!("   After adding 10 - new: {}", new);
 
     // Example 5: Accumulate operations
     println!("\n5. Accumulate Operations:");
     let counter = AtomicI32::new(1);
-    println!("   Initial value: {}", counter.get());
+    println!("   Initial value: {}", counter.load());
 
-    let old = counter.get_and_accumulate(2, |a, b| a * b);
+    let old = counter.fetch_accumulate(2, |a, b| a * b);
     println!(
         "   After multiplying by 2 - old: {}, new: {}",
         old,
-        counter.get()
+        counter.load()
     );
 
-    let new = counter.accumulate_and_get(3, |a, b| a + b);
+    let new = counter.fetch_accumulate(3, |a, b| a + b);
     println!("   After adding 3 - new: {}", new);
 
     println!("\n=== Example completed ===");

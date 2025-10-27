@@ -22,7 +22,7 @@ fn main() {
     let counter = AtomicI32::new(0);
     let start = std::time::Instant::now();
     for _ in 0..1_000_000 {
-        counter.increment_and_get();
+        counter.fetch_inc();
     }
     let duration = start.elapsed();
     println!("   Time: {:?}", duration);
@@ -41,7 +41,7 @@ fn main() {
         let counter = counter.clone();
         let handle = thread::spawn(move || {
             for _ in 0..100_000 {
-                counter.increment_and_get();
+                counter.fetch_inc();
             }
         });
         handles.push(handle);
@@ -57,14 +57,14 @@ fn main() {
         "   Operations/sec: {:.2}",
         1_000_000.0 / duration.as_secs_f64()
     );
-    println!("   Final value: {}", counter.get());
+    println!("   Final value: {}", counter.load());
 
     // Benchmark 3: Compare-and-swap
     println!("\n3. Compare-and-Swap (1,000,000 operations):");
     let counter = AtomicI32::new(0);
     let start = std::time::Instant::now();
     for i in 0..1_000_000 {
-        while counter.compare_and_set(i, i + 1).is_err() {
+        while counter.compare_set(i, i + 1).is_err() {
             // Retry on failure
         }
     }
@@ -80,7 +80,7 @@ fn main() {
     let counter = AtomicI32::new(0);
     let start = std::time::Instant::now();
     for _ in 0..1_000_000 {
-        counter.update_and_get(|x| x + 1);
+        counter.fetch_update(|x| x + 1);
     }
     let duration = start.elapsed();
     println!("   Time: {:?}", duration);
@@ -95,7 +95,7 @@ fn main() {
     let start = std::time::Instant::now();
     let mut sum = 0i64;
     for _ in 0..10_000_000 {
-        sum += counter.get() as i64;
+        sum += counter.load() as i64;
     }
     let duration = start.elapsed();
     println!("   Time: {:?}", duration);

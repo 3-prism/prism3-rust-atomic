@@ -21,13 +21,13 @@ fn main() {
     // Example 1: Simple flag
     println!("1. Simple Flag:");
     let flag = AtomicBool::new(false);
-    println!("   Initial value: {}", flag.get());
+    println!("   Initial value: {}", flag.load());
 
-    flag.set(true);
-    println!("   After set(true): {}", flag.get());
+    flag.store(true);
+    println!("   After set(true): {}", flag.load());
 
-    flag.get_and_negate();
-    println!("   After negate: {}", flag.get());
+    flag.fetch_not();
+    println!("   After negate: {}", flag.load());
 
     // Example 2: One-time initialization
     println!("\n2. One-time Initialization:");
@@ -37,7 +37,7 @@ fn main() {
     for i in 0..5 {
         let initialized = initialized.clone();
         let handle = thread::spawn(move || {
-            if initialized.compare_and_set_if_false(true).is_ok() {
+            if initialized.set_if_false(true).is_ok() {
                 println!("   Thread {} performed initialization", i);
                 thread::sleep(Duration::from_millis(100));
             } else {
@@ -51,7 +51,7 @@ fn main() {
         handle.join().unwrap();
     }
 
-    println!("   Final state: initialized = {}", initialized.get());
+    println!("   Final state: initialized = {}", initialized.load());
 
     // Example 3: Producer-Consumer signaling
     println!("\n3. Producer-Consumer Signaling:");
@@ -65,18 +65,18 @@ fn main() {
     let producer = thread::spawn(move || {
         println!("   Producer: preparing data...");
         thread::sleep(Duration::from_millis(100));
-        data_clone.set(true);
-        ready_clone.set(true);
+        data_clone.store(true);
+        ready_clone.store(true);
         println!("   Producer: data ready!");
     });
 
     // Consumer thread
     let consumer = thread::spawn(move || {
         println!("   Consumer: waiting for data...");
-        while !ready.get() {
+        while !ready.load() {
             thread::yield_now();
         }
-        println!("   Consumer: received data = {}", data.get());
+        println!("   Consumer: received data = {}", data.load());
     });
 
     producer.join().unwrap();
@@ -91,7 +91,7 @@ fn main() {
         let flag = flag.clone();
         let handle = thread::spawn(move || {
             for _ in 0..10 {
-                flag.get_and_negate();
+                flag.fetch_not();
             }
             println!("   Thread {} completed 10 toggles", i);
         });
@@ -102,7 +102,7 @@ fn main() {
         handle.join().unwrap();
     }
 
-    println!("   Final state: {} (after 100 toggles)", flag.get());
+    println!("   Final state: {} (after 100 toggles)", flag.load());
 
     println!("\n=== Example completed ===");
 }

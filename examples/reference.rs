@@ -33,16 +33,16 @@ fn main() {
     });
     let atomic_config = AtomicRef::new(config.clone());
 
-    println!("   Initial config: {:?}", atomic_config.get());
+    println!("   Initial config: {:?}", atomic_config.load());
 
     let new_config = Arc::new(Config {
         version: 2,
         name: "updated".to_string(),
         value: 200,
     });
-    atomic_config.set(new_config);
+    atomic_config.store(new_config);
 
-    println!("   Updated config: {:?}", atomic_config.get());
+    println!("   Updated config: {:?}", atomic_config.load());
 
     // Example 2: Compare-and-swap
     println!("\n2. Compare-and-Swap:");
@@ -53,15 +53,15 @@ fn main() {
     });
     let atomic_config = AtomicRef::new(config.clone());
 
-    let current = atomic_config.get();
+    let current = atomic_config.load();
     let new_config = Arc::new(Config {
         version: 2,
         name: "v2".to_string(),
         value: 20,
     });
 
-    match atomic_config.compare_and_set(&current, new_config) {
-        Ok(_) => println!("   CAS succeeded: {:?}", atomic_config.get()),
+    match atomic_config.compare_set(&current, new_config) {
+        Ok(_) => println!("   CAS succeeded: {:?}", atomic_config.load()),
         Err(actual) => println!("   CAS failed: {:?}", actual),
     }
 
@@ -74,7 +74,7 @@ fn main() {
     });
     let atomic_config = AtomicRef::new(config);
 
-    let old = atomic_config.get_and_update(|current| {
+    let old = atomic_config.fetch_update(|current| {
         Arc::new(Config {
             version: current.version + 1,
             name: current.name.clone(),
@@ -83,7 +83,7 @@ fn main() {
     });
 
     println!("   Old config: {:?}", old);
-    println!("   New config: {:?}", atomic_config.get());
+    println!("   New config: {:?}", atomic_config.load());
 
     // Example 4: Multi-threaded updates
     println!("\n4. Multi-threaded Updates:");
@@ -99,7 +99,7 @@ fn main() {
         let atomic_config = atomic_config.clone();
         let handle = thread::spawn(move || {
             for _ in 0..10 {
-                atomic_config.update_and_get(|current| {
+                atomic_config.fetch_update(|current| {
                     Arc::new(Config {
                         version: current.version + 1,
                         name: current.name.clone(),
@@ -116,7 +116,7 @@ fn main() {
         handle.join().unwrap();
     }
 
-    let final_config = atomic_config.get();
+    let final_config = atomic_config.load();
     println!("   Final config: {:?}", final_config);
     println!("   Expected version: 100, actual: {}", final_config.version);
     println!("   Expected value: 100, actual: {}", final_config.value);
