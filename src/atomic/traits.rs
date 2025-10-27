@@ -18,8 +18,8 @@
 
 /// Common trait for all atomic types.
 ///
-/// Provides basic atomic operations including get, set, swap, and
-/// compare-and-set.
+/// Provides basic atomic operations including load, store, swap,
+/// compare-and-set, and functional updates.
 ///
 /// # Author
 ///
@@ -28,25 +28,26 @@ pub trait Atomic {
     /// The value type stored in the atomic.
     type Value;
 
-    /// Gets the current value.
+    /// Loads the current value.
     ///
     /// Uses `Acquire` ordering by default.
     ///
     /// # Returns
     ///
     /// The current value.
-    fn get(&self) -> Self::Value;
+    fn load(&self) -> Self::Value;
 
-    /// Sets a new value.
+    /// Stores a new value.
     ///
     /// Uses `Release` ordering by default.
     ///
     /// # Parameters
     ///
-    /// * `value` - The new value to set.
-    fn set(&self, value: Self::Value);
+    /// * `value` - The new value to store.
+    fn store(&self, value: Self::Value);
 
-    /// Swaps the current value with a new value, returning the old value.
+    /// Swaps the current value with a new value, returning the old
+    /// value.
     ///
     /// Uses `AcqRel` ordering by default.
     ///
@@ -61,11 +62,12 @@ pub trait Atomic {
 
     /// Compares and sets the value atomically.
     ///
-    /// If the current value equals `current`, sets it to `new` and returns
-    /// `Ok(())`. Otherwise, returns `Err(actual)` where `actual` is the
-    /// current value.
+    /// If the current value equals `current`, sets it to `new` and
+    /// returns `Ok(())`. Otherwise, returns `Err(actual)` where
+    /// `actual` is the current value.
     ///
-    /// Uses `AcqRel` ordering on success and `Acquire` ordering on failure.
+    /// Uses `AcqRel` ordering on success and `Acquire` ordering on
+    /// failure.
     ///
     /// # Parameters
     ///
@@ -74,20 +76,41 @@ pub trait Atomic {
     ///
     /// # Returns
     ///
-    /// `Ok(())` on success, or `Err(actual)` on failure where `actual` is
-    /// the real current value.
-    fn compare_and_set(&self, current: Self::Value, new: Self::Value) -> Result<(), Self::Value>;
+    /// `Ok(())` on success, or `Err(actual)` on failure where
+    /// `actual` is the real current value.
+    fn compare_set(&self, current: Self::Value, new: Self::Value) -> Result<(), Self::Value>;
 
-    /// Compares and exchanges the value atomically, returning the previous
+    /// Weak version of compare-and-set.
+    ///
+    /// May spuriously fail even when the comparison succeeds. Should
+    /// be used in a loop.
+    ///
+    /// Uses `AcqRel` ordering on success and `Acquire` ordering on
+    /// failure.
+    ///
+    /// # Parameters
+    ///
+    /// * `current` - The expected current value.
+    /// * `new` - The new value to set if current matches.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on success, or `Err(actual)` on failure.
+    fn compare_set_weak(&self, current: Self::Value, new: Self::Value) -> Result<(), Self::Value>;
+
+    /// Compares and exchanges the value atomically, returning the
+    /// previous value.
+    ///
+    /// If the current value equals `current`, sets it to `new` and
+    /// returns the old value. Otherwise, returns the actual current
     /// value.
     ///
-    /// If the current value equals `current`, sets it to `new` and returns
-    /// the old value. Otherwise, returns the actual current value.
+    /// This is similar to `compare_set` but always returns the actual
+    /// value instead of a Result, which can be more convenient in CAS
+    /// loops.
     ///
-    /// This is similar to `compare_and_set` but always returns the actual
-    /// value instead of a Result, which can be more convenient in CAS loops.
-    ///
-    /// Uses `AcqRel` ordering on success and `Acquire` ordering on failure.
+    /// Uses `AcqRel` ordering on success and `Acquire` ordering on
+    /// failure.
     ///
     /// # Parameters
     ///
@@ -98,98 +121,63 @@ pub trait Atomic {
     ///
     /// The value before the operation. If it equals `current`, the
     /// operation succeeded.
-    fn compare_and_exchange(&self, current: Self::Value, new: Self::Value) -> Self::Value;
-}
+    fn compare_exchange(&self, current: Self::Value, new: Self::Value) -> Self::Value;
 
-/// Trait for atomic types that support functional updates.
-///
-/// Provides methods to update atomic values using closures.
-///
-/// # Author
-///
-/// Haixing Hu
-pub trait UpdatableAtomic: Atomic {
+    /// Weak version of compare-and-exchange.
+    ///
+    /// May spuriously fail even when the comparison succeeds. Should
+    /// be used in a loop.
+    ///
+    /// Uses `AcqRel` ordering on success and `Acquire` ordering on
+    /// failure.
+    ///
+    /// # Parameters
+    ///
+    /// * `current` - The expected current value.
+    /// * `new` - The new value to set if current matches.
+    ///
+    /// # Returns
+    ///
+    /// The value before the operation.
+    fn compare_exchange_weak(&self, current: Self::Value, new: Self::Value) -> Self::Value;
+
     /// Updates the value using a function, returning the old value.
     ///
     /// Internally uses a CAS loop until the update succeeds.
     ///
     /// # Parameters
     ///
-    /// * `f` - A function that takes the current value and returns the new
-    ///   value.
+    /// * `f` - A function that takes the current value and returns
+    ///   the new value.
     ///
     /// # Returns
     ///
     /// The old value before the update.
-    fn get_and_update<F>(&self, f: F) -> Self::Value
-    where
-        F: Fn(Self::Value) -> Self::Value;
-
-    /// Updates the value using a function, returning the new value.
-    ///
-    /// Internally uses a CAS loop until the update succeeds.
-    ///
-    /// # Parameters
-    ///
-    /// * `f` - A function that takes the current value and returns the new
-    ///   value.
-    ///
-    /// # Returns
-    ///
-    /// The new value after the update.
-    fn update_and_get<F>(&self, f: F) -> Self::Value
+    fn fetch_update<F>(&self, f: F) -> Self::Value
     where
         F: Fn(Self::Value) -> Self::Value;
 }
 
-/// Trait for atomic integer types.
+/// Trait for atomic numeric types that support arithmetic operations.
 ///
-/// Provides integer-specific operations like increment, decrement, and
-/// arithmetic operations.
+/// Provides common arithmetic operations (add, subtract, multiply, divide)
+/// for both integer and floating-point atomic types. This trait unifies
+/// the arithmetic interface across all numeric atomic types.
+///
+/// # Note
+///
+/// Integer types also provide `fetch_inc()` and `fetch_dec()` methods
+/// as convenient shortcuts for incrementing/decrementing by 1, but these
+/// are not part of this trait as they are integer-specific operations.
 ///
 /// # Author
 ///
 /// Haixing Hu
-pub trait AtomicInteger: UpdatableAtomic {
-    /// Increments the value by 1, returning the old value.
-    ///
-    /// Uses `Relaxed` ordering by default.
-    ///
-    /// # Returns
-    ///
-    /// The old value before incrementing.
-    fn get_and_increment(&self) -> Self::Value;
-
-    /// Increments the value by 1, returning the new value.
-    ///
-    /// Uses `Relaxed` ordering by default.
-    ///
-    /// # Returns
-    ///
-    /// The new value after incrementing.
-    fn increment_and_get(&self) -> Self::Value;
-
-    /// Decrements the value by 1, returning the old value.
-    ///
-    /// Uses `Relaxed` ordering by default.
-    ///
-    /// # Returns
-    ///
-    /// The old value before decrementing.
-    fn get_and_decrement(&self) -> Self::Value;
-
-    /// Decrements the value by 1, returning the new value.
-    ///
-    /// Uses `Relaxed` ordering by default.
-    ///
-    /// # Returns
-    ///
-    /// The new value after decrementing.
-    fn decrement_and_get(&self) -> Self::Value;
-
+pub trait AtomicNumber: Atomic {
     /// Adds a delta to the value, returning the old value.
     ///
-    /// Uses `Relaxed` ordering by default.
+    /// For integers, uses `Relaxed` ordering by default.
+    /// For floating-point types, uses `AcqRel` ordering (CAS loop).
     ///
     /// # Parameters
     ///
@@ -198,18 +186,45 @@ pub trait AtomicInteger: UpdatableAtomic {
     /// # Returns
     ///
     /// The old value before adding.
-    fn get_and_add(&self, delta: Self::Value) -> Self::Value;
+    fn fetch_add(&self, delta: Self::Value) -> Self::Value;
 
-    /// Adds a delta to the value, returning the new value.
+    /// Subtracts a delta from the value, returning the old value.
     ///
-    /// Uses `Relaxed` ordering by default.
+    /// For integers, uses `Relaxed` ordering by default.
+    /// For floating-point types, uses `AcqRel` ordering (CAS loop).
     ///
     /// # Parameters
     ///
-    /// * `delta` - The value to add.
+    /// * `delta` - The value to subtract.
     ///
     /// # Returns
     ///
-    /// The new value after adding.
-    fn add_and_get(&self, delta: Self::Value) -> Self::Value;
+    /// The old value before subtracting.
+    fn fetch_sub(&self, delta: Self::Value) -> Self::Value;
+
+    /// Multiplies the value by a factor, returning the old value.
+    ///
+    /// Uses `AcqRel` ordering by default. Implemented via CAS loop.
+    ///
+    /// # Parameters
+    ///
+    /// * `factor` - The value to multiply by.
+    ///
+    /// # Returns
+    ///
+    /// The old value before multiplying.
+    fn fetch_mul(&self, factor: Self::Value) -> Self::Value;
+
+    /// Divides the value by a divisor, returning the old value.
+    ///
+    /// Uses `AcqRel` ordering by default. Implemented via CAS loop.
+    ///
+    /// # Parameters
+    ///
+    /// * `divisor` - The value to divide by.
+    ///
+    /// # Returns
+    ///
+    /// The old value before dividing.
+    fn fetch_div(&self, divisor: Self::Value) -> Self::Value;
 }
