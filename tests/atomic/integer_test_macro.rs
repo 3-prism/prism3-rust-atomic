@@ -15,8 +15,7 @@ macro_rules! test_atomic_integer {
             use prism3_atomic::atomic::{
                 $atomic_type,
                 Atomic,
-                AtomicInteger,
-                UpdatableAtomic,
+                AtomicNumber,
             };
             use std::sync::Arc;
             use std::thread;
@@ -24,28 +23,28 @@ macro_rules! test_atomic_integer {
             #[test]
             fn test_new() {
                 let atomic = <$atomic_type>::new(42);
-                assert_eq!(atomic.get(), 42);
+                assert_eq!(atomic.load(), 42);
             }
 
             #[test]
             fn test_default() {
                 let atomic = <$atomic_type>::default();
-                assert_eq!(atomic.get(), 0);
+                assert_eq!(atomic.load(), 0);
             }
 
             #[test]
             fn test_from() {
                 let atomic = <$atomic_type>::from(100);
-                assert_eq!(atomic.get(), 100);
+                assert_eq!(atomic.load(), 100);
             }
 
             #[test]
             fn test_get_set() {
                 let atomic = <$atomic_type>::new(0);
-                atomic.set(42);
-                assert_eq!(atomic.get(), 42);
-                atomic.set(10);
-                assert_eq!(atomic.get(), 10);
+                atomic.store(42);
+                assert_eq!(atomic.load(), 42);
+                atomic.store(10);
+                assert_eq!(atomic.load(), 10);
             }
 
             #[test]
@@ -53,131 +52,189 @@ macro_rules! test_atomic_integer {
                 let atomic = <$atomic_type>::new(10);
                 let old = atomic.swap(20);
                 assert_eq!(old, 10);
-                assert_eq!(atomic.get(), 20);
+                assert_eq!(atomic.load(), 20);
             }
 
             #[test]
             fn test_compare_and_set_success() {
                 let atomic = <$atomic_type>::new(10);
-                assert!(atomic.compare_and_set(10, 20).is_ok());
-                assert_eq!(atomic.get(), 20);
+                assert!(atomic.compare_set(10, 20).is_ok());
+                assert_eq!(atomic.load(), 20);
             }
 
             #[test]
             fn test_compare_and_set_failure() {
                 let atomic = <$atomic_type>::new(10);
-                match atomic.compare_and_set(15, 20) {
+                match atomic.compare_set(15, 20) {
                     Ok(_) => panic!("Should fail"),
                     Err(actual) => assert_eq!(actual, 10),
                 }
-                assert_eq!(atomic.get(), 10);
+                assert_eq!(atomic.load(), 10);
             }
 
             #[test]
             fn test_compare_and_exchange() {
                 let atomic = <$atomic_type>::new(10);
-                let prev = atomic.compare_and_exchange(10, 20);
+                let prev = atomic.compare_exchange(10, 20);
                 assert_eq!(prev, 10);
-                assert_eq!(atomic.get(), 20);
+                assert_eq!(atomic.load(), 20);
 
-                let prev = atomic.compare_and_exchange(10, 30);
+                let prev = atomic.compare_exchange(10, 30);
                 assert_eq!(prev, 20);
-                assert_eq!(atomic.get(), 20);
+                assert_eq!(atomic.load(), 20);
             }
 
             #[test]
             fn test_get_and_increment() {
                 let atomic = <$atomic_type>::new(10);
-                let old = atomic.get_and_increment();
+                let old = atomic.fetch_inc();
                 assert_eq!(old, 10);
-                assert_eq!(atomic.get(), 11);
+                assert_eq!(atomic.load(), 11);
             }
 
             #[test]
-            fn test_increment_and_get() {
+            fn test_fetch_inc_and_get() {
                 let atomic = <$atomic_type>::new(10);
-                let new = atomic.increment_and_get();
+                let new = atomic.fetch_inc_and_get();
                 assert_eq!(new, 11);
-                assert_eq!(atomic.get(), 11);
+                assert_eq!(atomic.load(), 11);
             }
 
             #[test]
             fn test_get_and_decrement() {
                 let atomic = <$atomic_type>::new(10);
-                let old = atomic.get_and_decrement();
+                let old = atomic.fetch_dec();
                 assert_eq!(old, 10);
-                assert_eq!(atomic.get(), 9);
+                assert_eq!(atomic.load(), 9);
             }
 
             #[test]
-            fn test_decrement_and_get() {
+            fn test_fetch_dec_and_get() {
                 let atomic = <$atomic_type>::new(10);
-                let new = atomic.decrement_and_get();
+                let new = atomic.fetch_dec_and_get();
                 assert_eq!(new, 9);
-                assert_eq!(atomic.get(), 9);
+                assert_eq!(atomic.load(), 9);
             }
 
             #[test]
             fn test_get_and_add() {
                 let atomic = <$atomic_type>::new(10);
-                let old = atomic.get_and_add(5);
+                let old = atomic.fetch_add(5);
                 assert_eq!(old, 10);
-                assert_eq!(atomic.get(), 15);
+                assert_eq!(atomic.load(), 15);
             }
 
             #[test]
-            fn test_add_and_get() {
+            fn test_fetch_add_and_get() {
                 let atomic = <$atomic_type>::new(10);
-                let new = atomic.add_and_get(5);
+                let new = atomic.fetch_add_and_get(5);
                 assert_eq!(new, 15);
+                assert_eq!(atomic.load(), 15);
             }
 
             #[test]
             fn test_get_and_sub() {
                 let atomic = <$atomic_type>::new(10);
-                let old = atomic.get_and_sub(3);
+                let old = atomic.fetch_sub(3);
                 assert_eq!(old, 10);
-                assert_eq!(atomic.get(), 7);
+                assert_eq!(atomic.load(), 7);
             }
 
             #[test]
-            fn test_sub_and_get() {
+            fn test_fetch_sub_and_get() {
                 let atomic = <$atomic_type>::new(10);
-                let new = atomic.sub_and_get(3);
+                let new = atomic.fetch_sub_and_get(3);
                 assert_eq!(new, 7);
+                assert_eq!(atomic.load(), 7);
+            }
+
+            #[test]
+            fn test_fetch_mul() {
+                let atomic = <$atomic_type>::new(10);
+                let old = atomic.fetch_mul(3);
+                assert_eq!(old, 10);
+                assert_eq!(atomic.load(), 30);
+            }
+
+            #[test]
+            fn test_fetch_mul_zero() {
+                let atomic = <$atomic_type>::new(10);
+                let old = atomic.fetch_mul(0);
+                assert_eq!(old, 10);
+                assert_eq!(atomic.load(), 0);
+            }
+
+            #[test]
+            fn test_fetch_mul_one() {
+                let atomic = <$atomic_type>::new(10);
+                let old = atomic.fetch_mul(1);
+                assert_eq!(old, 10);
+                assert_eq!(atomic.load(), 10);
+            }
+
+            #[test]
+            fn test_fetch_div() {
+                let atomic = <$atomic_type>::new(30);
+                let old = atomic.fetch_div(3);
+                assert_eq!(old, 30);
+                assert_eq!(atomic.load(), 10);
+            }
+
+            #[test]
+            fn test_fetch_div_one() {
+                let atomic = <$atomic_type>::new(10);
+                let old = atomic.fetch_div(1);
+                assert_eq!(old, 10);
+                assert_eq!(atomic.load(), 10);
+            }
+
+            #[test]
+            #[should_panic(expected = "division by zero")]
+            fn test_fetch_div_by_zero() {
+                let atomic = <$atomic_type>::new(10);
+                atomic.fetch_div(0);
             }
 
             #[test]
             fn test_get_and_bit_and() {
                 let atomic = <$atomic_type>::new(0b1111);
-                let old = atomic.get_and_bit_and(0b1100);
+                let old = atomic.fetch_and(0b1100);
                 assert_eq!(old, 0b1111);
-                assert_eq!(atomic.get(), 0b1100);
+                assert_eq!(atomic.load(), 0b1100);
             }
 
             #[test]
             fn test_get_and_bit_or() {
                 let atomic = <$atomic_type>::new(0b1100);
-                let old = atomic.get_and_bit_or(0b0011);
+                let old = atomic.fetch_or(0b0011);
                 assert_eq!(old, 0b1100);
-                assert_eq!(atomic.get(), 0b1111);
+                assert_eq!(atomic.load(), 0b1111);
             }
 
             #[test]
             fn test_get_and_bit_xor() {
                 let atomic = <$atomic_type>::new(0b1100);
-                let old = atomic.get_and_bit_xor(0b0110);
+                let old = atomic.fetch_xor(0b0110);
                 assert_eq!(old, 0b1100);
-                assert_eq!(atomic.get(), 0b1010);
+                assert_eq!(atomic.load(), 0b1010);
             }
 
             #[test]
             fn test_get_and_bit_not() {
                 let value: $value_type = 42;
                 let atomic = <$atomic_type>::new(value);
-                let old = atomic.get_and_bit_not();
+                let old = atomic.fetch_not();
                 assert_eq!(old, value);
-                assert_eq!(atomic.get(), !value);
+                assert_eq!(atomic.load(), !value);
+            }
+
+            #[test]
+            fn test_bit_not_twice() {
+                let value: $value_type = 42;
+                let atomic = <$atomic_type>::new(value);
+                atomic.fetch_not();
+                atomic.fetch_not();
+                assert_eq!(atomic.load(), value);
             }
 
             #[test]
@@ -186,79 +243,65 @@ macro_rules! test_atomic_integer {
                 let atomic = <$atomic_type>::new(value);
                 let new = atomic.bit_not_and_get();
                 assert_eq!(new, !value);
-                assert_eq!(atomic.get(), !value);
-            }
-
-            #[test]
-            fn test_bit_not_twice() {
-                let value: $value_type = 42;
-                let atomic = <$atomic_type>::new(value);
-                atomic.get_and_bit_not();
-                atomic.get_and_bit_not();
-                assert_eq!(atomic.get(), value);
+                assert_eq!(atomic.load(), !value);
             }
 
             #[test]
             fn test_get_and_update() {
                 let atomic = <$atomic_type>::new(10);
-                let old = atomic.get_and_update(|x| x * 2);
+                let old = atomic.fetch_update(|x| x * 2);
                 assert_eq!(old, 10);
-                assert_eq!(atomic.get(), 20);
-            }
-
-            #[test]
-            fn test_update_and_get() {
-                let atomic = <$atomic_type>::new(10);
-                let new = atomic.update_and_get(|x| x * 2);
-                assert_eq!(new, 20);
-                assert_eq!(atomic.get(), 20);
+                assert_eq!(atomic.load(), 20);
             }
 
             #[test]
             fn test_get_and_accumulate() {
                 let atomic = <$atomic_type>::new(10);
-                let old = atomic.get_and_accumulate(5, |a, b| a + b);
+                let old = atomic.fetch_accumulate(5, |a, b| a + b);
                 assert_eq!(old, 10);
-                assert_eq!(atomic.get(), 15);
-            }
-
-            #[test]
-            fn test_accumulate_and_get() {
-                let atomic = <$atomic_type>::new(10);
-                let new = atomic.accumulate_and_get(5, |a, b| a + b);
-                assert_eq!(new, 15);
+                assert_eq!(atomic.load(), 15);
             }
 
             #[test]
             fn test_get_and_max() {
                 let atomic = <$atomic_type>::new(10);
-                atomic.get_and_max(20);
-                assert_eq!(atomic.get(), 20);
-                atomic.get_and_max(15);
-                assert_eq!(atomic.get(), 20);
+                atomic.fetch_max(20);
+                assert_eq!(atomic.load(), 20);
+                atomic.fetch_max(15);
+                assert_eq!(atomic.load(), 20);
             }
 
             #[test]
-            fn test_max_and_get() {
+            fn test_fetch_max_and_get() {
                 let atomic = <$atomic_type>::new(10);
-                let new = atomic.max_and_get(20);
+                let new = atomic.fetch_max_and_get(20);
                 assert_eq!(new, 20);
+                assert_eq!(atomic.load(), 20);
+
+                let new = atomic.fetch_max_and_get(15);
+                assert_eq!(new, 20);
+                assert_eq!(atomic.load(), 20);
             }
 
             #[test]
             fn test_get_and_min() {
                 let atomic = <$atomic_type>::new(10);
-                atomic.get_and_min(5);
-                assert_eq!(atomic.get(), 5);
-                atomic.get_and_min(8);
-                assert_eq!(atomic.get(), 5);
+                atomic.fetch_min(5);
+                assert_eq!(atomic.load(), 5);
+                atomic.fetch_min(8);
+                assert_eq!(atomic.load(), 5);
             }
 
             #[test]
-            fn test_min_and_get() {
+            fn test_fetch_min_and_get() {
                 let atomic = <$atomic_type>::new(10);
-                let new = atomic.min_and_get(5);
+                let new = atomic.fetch_min_and_get(5);
                 assert_eq!(new, 5);
+                assert_eq!(atomic.load(), 5);
+
+                let new = atomic.fetch_min_and_get(8);
+                assert_eq!(new, 5);
+                assert_eq!(atomic.load(), 5);
             }
 
             #[test]
@@ -270,7 +313,7 @@ macro_rules! test_atomic_integer {
                     let counter = counter.clone();
                     let handle = thread::spawn(move || {
                         for _ in 0..10 {
-                            counter.increment_and_get();
+                            counter.fetch_inc();
                         }
                     });
                     handles.push(handle);
@@ -280,7 +323,7 @@ macro_rules! test_atomic_integer {
                     handle.join().unwrap();
                 }
 
-                assert_eq!(counter.get(), 100 as $value_type);
+                assert_eq!(counter.load(), 100 as $value_type);
             }
 
             #[test]
@@ -292,7 +335,7 @@ macro_rules! test_atomic_integer {
                     let counter = counter.clone();
                     let handle = thread::spawn(move || {
                         for _ in 0..10 {
-                            counter.get_and_increment();
+                            counter.fetch_inc();
                         }
                     });
                     handles.push(handle);
@@ -302,7 +345,7 @@ macro_rules! test_atomic_integer {
                     handle.join().unwrap();
                 }
 
-                assert_eq!(counter.get(), 100 as $value_type);
+                assert_eq!(counter.load(), 100 as $value_type);
             }
 
             #[test]
@@ -314,7 +357,7 @@ macro_rules! test_atomic_integer {
                     let counter = counter.clone();
                     let handle = thread::spawn(move || {
                         for _ in 0..10 {
-                            counter.get_and_decrement();
+                            counter.fetch_dec();
                         }
                     });
                     handles.push(handle);
@@ -324,29 +367,7 @@ macro_rules! test_atomic_integer {
                     handle.join().unwrap();
                 }
 
-                assert_eq!(counter.get(), 0);
-            }
-
-            #[test]
-            fn test_concurrent_decrement_and_get() {
-                let counter = Arc::new(<$atomic_type>::new(100 as $value_type));
-                let mut handles = vec![];
-
-                for _ in 0..10 {
-                    let counter = counter.clone();
-                    let handle = thread::spawn(move || {
-                        for _ in 0..10 {
-                            counter.decrement_and_get();
-                        }
-                    });
-                    handles.push(handle);
-                }
-
-                for handle in handles {
-                    handle.join().unwrap();
-                }
-
-                assert_eq!(counter.get(), 0);
+                assert_eq!(counter.load(), 0);
             }
 
             #[test]
@@ -358,7 +379,7 @@ macro_rules! test_atomic_integer {
                     let counter = counter.clone();
                     let handle = thread::spawn(move || {
                         for _ in 0..10 {
-                            counter.get_and_add(1);
+                            counter.fetch_add(1);
                         }
                     });
                     handles.push(handle);
@@ -368,30 +389,7 @@ macro_rules! test_atomic_integer {
                     handle.join().unwrap();
                 }
 
-                assert_eq!(counter.get(), 100 as $value_type);
-            }
-
-            #[test]
-            fn test_concurrent_update_and_get_high_contention() {
-                let counter = Arc::new(<$atomic_type>::new(0));
-                let mut handles = vec![];
-
-                // High contention: 10 threads, each doing 10 updates
-                for _ in 0..10 {
-                    let counter = counter.clone();
-                    let handle = thread::spawn(move || {
-                        for _ in 0..10 {
-                            counter.update_and_get(|x| x.wrapping_add(1));
-                        }
-                    });
-                    handles.push(handle);
-                }
-
-                for handle in handles {
-                    handle.join().unwrap();
-                }
-
-                assert_eq!(counter.get(), 100 as $value_type);
+                assert_eq!(counter.load(), 100 as $value_type);
             }
 
             #[test]
@@ -404,7 +402,7 @@ macro_rules! test_atomic_integer {
                     let counter = counter.clone();
                     let handle = thread::spawn(move || {
                         for _ in 0..10 {
-                            counter.get_and_accumulate(1, |a, b| a.wrapping_add(b));
+                            counter.fetch_accumulate(1, |a, b| a.wrapping_add(b));
                         }
                     });
                     handles.push(handle);
@@ -414,30 +412,7 @@ macro_rules! test_atomic_integer {
                     handle.join().unwrap();
                 }
 
-                assert_eq!(counter.get(), 100 as $value_type);
-            }
-
-            #[test]
-            fn test_concurrent_accumulate_and_get_high_contention() {
-                let counter = Arc::new(<$atomic_type>::new(0));
-                let mut handles = vec![];
-
-                // High contention: 10 threads, each doing 10 accumulations
-                for _ in 0..10 {
-                    let counter = counter.clone();
-                    let handle = thread::spawn(move || {
-                        for _ in 0..10 {
-                            counter.accumulate_and_get(1, |a, b| a.wrapping_add(b));
-                        }
-                    });
-                    handles.push(handle);
-                }
-
-                for handle in handles {
-                    handle.join().unwrap();
-                }
-
-                assert_eq!(counter.get(), 100 as $value_type);
+                assert_eq!(counter.load(), 100 as $value_type);
             }
 
             #[test]
@@ -450,7 +425,7 @@ macro_rules! test_atomic_integer {
                     let counter = counter.clone();
                     let handle = thread::spawn(move || {
                         for _ in 0..5 {
-                            counter.get_and_update(|x| x.wrapping_add(1));
+                            counter.fetch_update(|x| x.wrapping_add(1));
                         }
                     });
                     handles.push(handle);
@@ -460,7 +435,7 @@ macro_rules! test_atomic_integer {
                     handle.join().unwrap();
                 }
 
-                assert_eq!(counter.get(), 100 as $value_type);
+                assert_eq!(counter.load(), 100 as $value_type);
             }
 
             #[test]
@@ -471,9 +446,9 @@ macro_rules! test_atomic_integer {
                 for i in 0..10 {
                     let atomic = atomic.clone();
                     let handle = thread::spawn(move || {
-                        let mut current = atomic.get();
+                        let mut current = atomic.load();
                         loop {
-                            match atomic.compare_and_set_weak(current, current + 1) {
+                            match atomic.compare_set_weak(current, current + 1) {
                                 Ok(_) => return i,
                                 Err(actual) => current = actual,
                             }
@@ -486,14 +461,85 @@ macro_rules! test_atomic_integer {
                     handle.join().unwrap();
                 }
 
-                assert_eq!(atomic.get(), 10);
+                assert_eq!(atomic.load(), 10);
+            }
+
+            #[test]
+            fn test_concurrent_fetch_mul() {
+                let atomic = Arc::new(<$atomic_type>::new(1));
+                let mut handles = vec![];
+
+                for _ in 0..5 {
+                    let atomic = atomic.clone();
+                    let handle = thread::spawn(move || {
+                        atomic.fetch_mul(2);
+                    });
+                    handles.push(handle);
+                }
+
+                for handle in handles {
+                    handle.join().unwrap();
+                }
+
+                // Result should be 2^5 = 32
+                assert_eq!(atomic.load(), 32);
+            }
+
+            #[test]
+            fn test_concurrent_fetch_div() {
+                // Use 32 as starting value to avoid overflow on i8/u8
+                // 32 / 2 / 2 / 2 / 2 / 2 = 1
+                let atomic = Arc::new(<$atomic_type>::new(32));
+                let mut handles = vec![];
+
+                for _ in 0..5 {
+                    let atomic = atomic.clone();
+                    let handle = thread::spawn(move || {
+                        atomic.fetch_div(2);
+                    });
+                    handles.push(handle);
+                }
+
+                for handle in handles {
+                    handle.join().unwrap();
+                }
+
+                // Result should be 32 / 2^5 = 1
+                assert_eq!(atomic.load(), 1);
+            }
+
+            #[test]
+            fn test_concurrent_compare_exchange_weak() {
+                let atomic = Arc::new(<$atomic_type>::new(0));
+                let mut handles = vec![];
+
+                for _ in 0..10 {
+                    let atomic = atomic.clone();
+                    let handle = thread::spawn(move || {
+                        let mut current = atomic.load();
+                        loop {
+                            let prev = atomic.compare_and_exchange_weak(current, current + 1);
+                            if prev == current {
+                                break;
+                            }
+                            current = prev;
+                        }
+                    });
+                    handles.push(handle);
+                }
+
+                for handle in handles {
+                    handle.join().unwrap();
+                }
+
+                assert_eq!(atomic.load(), 10);
             }
 
             #[test]
             fn test_trait_atomic() {
                 fn test_atomic<T: Atomic<Value = $value_type>>(atomic: &T) {
-                    atomic.set(42);
-                    assert_eq!(atomic.get(), 42);
+                    atomic.store(42);
+                    assert_eq!(atomic.load(), 42);
                     let old = atomic.swap(100);
                     assert_eq!(old, 42);
                 }
@@ -503,22 +549,85 @@ macro_rules! test_atomic_integer {
             }
 
             #[test]
-            fn test_trait_updatable_atomic() {
-                fn test_updatable<T: UpdatableAtomic<Value = $value_type>>(atomic: &T) {
-                    let new = atomic.update_and_get(|x| x + 10);
-                    assert_eq!(new, 10);
-                }
-
+            fn test_trait_fetch_update() {
                 let atomic = <$atomic_type>::new(0);
-                test_updatable(&atomic);
+                let old = atomic.fetch_update(|x| x + 10);
+                assert_eq!(old, 0);
+                assert_eq!(atomic.load(), 10);
             }
 
             #[test]
-            fn test_trait_atomic_integer() {
-                fn test_integer<T: AtomicInteger<Value = $value_type>>(atomic: &T) {
-                    atomic.increment_and_get();
-                    atomic.add_and_get(5);
-                    assert_eq!(atomic.get(), 6);
+            fn test_trait_atomic_number() {
+                fn test_number<T: AtomicNumber<Value = $value_type>>(atomic: &T) {
+                    // Note: fetch_inc/dec are not part of AtomicNumber trait
+                    // They are integer-specific convenience methods
+                    atomic.fetch_add(1);
+                    atomic.fetch_add(5);
+                    assert_eq!(atomic.load(), 6);
+                }
+
+                let atomic = <$atomic_type>::new(0);
+                test_number(&atomic);
+            }
+
+            #[test]
+            fn test_trait_atomic_compare_set_weak() {
+                fn test_atomic<T: Atomic<Value = $value_type>>(atomic: &T) {
+                    atomic.store(10);
+                    assert!(atomic.compare_set_weak(10, 20).is_ok());
+                    assert_eq!(atomic.load(), 20);
+                }
+
+                let atomic = <$atomic_type>::new(0);
+                test_atomic(&atomic);
+            }
+
+            #[test]
+            fn test_trait_atomic_compare_exchange_weak() {
+                fn test_atomic<T: Atomic<Value = $value_type>>(atomic: &T) {
+                    atomic.store(10);
+                    let prev = atomic.compare_exchange_weak(10, 20);
+                    assert_eq!(prev, 10);
+                    assert_eq!(atomic.load(), 20);
+                }
+
+                let atomic = <$atomic_type>::new(0);
+                test_atomic(&atomic);
+            }
+
+            #[test]
+            fn test_trait_atomic_integer_fetch_sub() {
+                fn test_integer<T: AtomicNumber<Value = $value_type>>(atomic: &T) {
+                    atomic.store(100);
+                    let old = atomic.fetch_sub(30);
+                    assert_eq!(old, 100);
+                    assert_eq!(atomic.load(), 70);
+                }
+
+                let atomic = <$atomic_type>::new(0);
+                test_integer(&atomic);
+            }
+
+            #[test]
+            fn test_trait_atomic_integer_fetch_mul() {
+                fn test_integer<T: AtomicNumber<Value = $value_type>>(atomic: &T) {
+                    atomic.store(5);
+                    let old = atomic.fetch_mul(3);
+                    assert_eq!(old, 5);
+                    assert_eq!(atomic.load(), 15);
+                }
+
+                let atomic = <$atomic_type>::new(0);
+                test_integer(&atomic);
+            }
+
+            #[test]
+            fn test_trait_atomic_integer_fetch_div() {
+                fn test_integer<T: AtomicNumber<Value = $value_type>>(atomic: &T) {
+                    atomic.store(20);
+                    let old = atomic.fetch_div(4);
+                    assert_eq!(old, 20);
+                    assert_eq!(atomic.load(), 5);
                 }
 
                 let atomic = <$atomic_type>::new(0);
@@ -544,14 +653,14 @@ macro_rules! test_atomic_integer {
 
                 let old = atomic.inner().fetch_add(5, Ordering::Relaxed);
                 assert_eq!(old, 100);
-                assert_eq!(atomic.get(), 105);
+                assert_eq!(atomic.load(), 105);
             }
 
             #[test]
             fn test_compare_and_set_weak_success() {
                 let atomic = <$atomic_type>::new(10);
-                assert!(atomic.compare_and_set_weak(10, 20).is_ok());
-                assert_eq!(atomic.get(), 20);
+                assert!(atomic.compare_set_weak(10, 20).is_ok());
+                assert_eq!(atomic.load(), 20);
             }
 
             #[test]
@@ -559,153 +668,89 @@ macro_rules! test_atomic_integer {
                 let atomic = <$atomic_type>::new(10);
                 let prev = atomic.compare_and_exchange_weak(10, 20);
                 assert_eq!(prev, 10);
-                assert_eq!(atomic.get(), 20);
+                assert_eq!(atomic.load(), 20);
             }
 
             #[test]
             fn test_get_and_accumulate_multiply() {
                 let atomic = <$atomic_type>::new(2);
-                let old = atomic.get_and_accumulate(3, |a, b| a.wrapping_mul(b));
+                let old = atomic.fetch_accumulate(3, |a, b| a.wrapping_mul(b));
                 assert_eq!(old, 2);
-                assert_eq!(atomic.get(), 6);
-            }
-
-            #[test]
-            fn test_accumulate_and_get_add() {
-                let atomic = <$atomic_type>::new(10);
-                let new = atomic.accumulate_and_get(5, |a, b| a.wrapping_add(b));
-                assert_eq!(new, 15);
-                assert_eq!(atomic.get(), 15);
+                assert_eq!(atomic.load(), 6);
             }
 
             #[test]
             fn test_max_with_smaller_value() {
                 let atomic = <$atomic_type>::new(50);
-                atomic.get_and_max(30);
-                assert_eq!(atomic.get(), 50);
+                atomic.fetch_max(30);
+                assert_eq!(atomic.load(), 50);
             }
 
             #[test]
             fn test_min_with_larger_value() {
                 let atomic = <$atomic_type>::new(50);
-                atomic.get_and_min(80);
-                assert_eq!(atomic.get(), 50);
-            }
-
-            #[test]
-            fn test_max_and_get_larger() {
-                let atomic = <$atomic_type>::new(10);
-                let new = atomic.max_and_get(20);
-                assert_eq!(new, 20);
-                assert_eq!(atomic.get(), 20);
-            }
-
-            #[test]
-            fn test_min_and_get_smaller() {
-                let atomic = <$atomic_type>::new(20);
-                let new = atomic.min_and_get(10);
-                assert_eq!(new, 10);
-                assert_eq!(atomic.get(), 10);
+                atomic.fetch_min(80);
+                assert_eq!(atomic.load(), 50);
             }
 
             #[test]
             fn test_bitwise_combinations() {
                 let atomic = <$atomic_type>::new(0b1111);
-                atomic.get_and_bit_and(0b1100);
-                assert_eq!(atomic.get(), 0b1100);
+                atomic.fetch_and(0b1100);
+                assert_eq!(atomic.load(), 0b1100);
 
-                atomic.get_and_bit_or(0b0011);
-                assert_eq!(atomic.get(), 0b1111);
+                atomic.fetch_or(0b0011);
+                assert_eq!(atomic.load(), 0b1111);
 
-                atomic.get_and_bit_xor(0b0101);
-                assert_eq!(atomic.get(), 0b1010);
+                atomic.fetch_xor(0b0101);
+                assert_eq!(atomic.load(), 0b1010);
             }
 
             #[test]
             fn test_wrapping_decrement_from_one() {
                 let atomic = <$atomic_type>::new(1);
-                atomic.decrement_and_get();
-                assert_eq!(atomic.get(), 0);
+                atomic.fetch_dec();
+                assert_eq!(atomic.load(), 0);
 
                 // Test wrapping add
-                atomic.add_and_get(1);
-                assert_eq!(atomic.get(), 1);
+                atomic.fetch_add(1);
+                assert_eq!(atomic.load(), 1);
             }
 
             #[test]
             fn test_get_and_update_complex() {
                 let atomic = <$atomic_type>::new(10);
-                let old = atomic.get_and_update(|x| x.wrapping_mul(2).wrapping_add(5));
+                let old = atomic.fetch_update(|x| x.wrapping_mul(2).wrapping_add(5));
                 assert_eq!(old, 10);
-                assert_eq!(atomic.get(), 25);
-            }
-
-            #[test]
-            fn test_update_and_get_complex() {
-                let atomic = <$atomic_type>::new(10);
-                let new = atomic.update_and_get(|x| x.wrapping_mul(2).wrapping_add(5));
-                assert_eq!(new, 25);
-                assert_eq!(atomic.get(), 25);
-            }
-
-            #[test]
-            fn test_sub_and_get_zero() {
-                let atomic = <$atomic_type>::new(50);
-                let new = atomic.sub_and_get(0);
-                assert_eq!(new, 50);
-                assert_eq!(atomic.get(), 50);
-            }
-
-            #[test]
-            fn test_add_and_get_zero() {
-                let atomic = <$atomic_type>::new(50);
-                let new = atomic.add_and_get(0);
-                assert_eq!(new, 50);
-                assert_eq!(atomic.get(), 50);
-            }
-
-            #[test]
-            fn test_max_and_get_equal() {
-                let atomic = <$atomic_type>::new(50);
-                let new = atomic.max_and_get(50);
-                assert_eq!(new, 50);
-                assert_eq!(atomic.get(), 50);
-            }
-
-            #[test]
-            fn test_min_and_get_equal() {
-                let atomic = <$atomic_type>::new(30);
-                let new = atomic.min_and_get(30);
-                assert_eq!(new, 30);
-                assert_eq!(atomic.get(), 30);
+                assert_eq!(atomic.load(), 25);
             }
 
             #[test]
             fn test_compare_and_set_failure_path() {
                 let atomic = <$atomic_type>::new(10);
-                match atomic.compare_and_set(5, 15) {
+                match atomic.compare_set(5, 15) {
                     Ok(_) => panic!("Should have failed"),
                     Err(actual) => assert_eq!(actual, 10),
                 }
-                assert_eq!(atomic.get(), 10);
+                assert_eq!(atomic.load(), 10);
             }
 
             #[test]
             fn test_compare_and_exchange_failure_path() {
                 let atomic = <$atomic_type>::new(10);
-                let prev = atomic.compare_and_exchange(5, 15);
+                let prev = atomic.compare_exchange(5, 15);
                 assert_eq!(prev, 10);
-                assert_eq!(atomic.get(), 10);
+                assert_eq!(atomic.load(), 10);
             }
 
             #[test]
             fn test_compare_and_set_weak_failure_path() {
                 let atomic = <$atomic_type>::new(10);
-                match atomic.compare_and_set_weak(5, 15) {
+                match atomic.compare_set_weak(5, 15) {
                     Ok(_) => panic!("Should have failed"),
                     Err(actual) => assert_eq!(actual, 10),
                 }
-                assert_eq!(atomic.get(), 10);
+                assert_eq!(atomic.load(), 10);
             }
 
             #[test]
@@ -713,7 +758,53 @@ macro_rules! test_atomic_integer {
                 let atomic = <$atomic_type>::new(10);
                 let prev = atomic.compare_and_exchange_weak(5, 15);
                 assert_eq!(prev, 10);
-                assert_eq!(atomic.get(), 10);
+                assert_eq!(atomic.load(), 10);
+            }
+
+            #[test]
+            fn test_compare_set_weak_multiple_attempts() {
+                let atomic = <$atomic_type>::new(0);
+                for i in 0..100 {
+                    let mut current = atomic.load();
+                    loop {
+                        match atomic.compare_set_weak(current, i) {
+                            Ok(_) => break,
+                            Err(actual) => current = actual,
+                        }
+                    }
+                }
+                assert_eq!(atomic.load(), 99);
+            }
+
+            #[test]
+            fn test_compare_exchange_weak_multiple_attempts() {
+                let atomic = <$atomic_type>::new(0);
+                for i in 0..100 {
+                    let mut current = atomic.load();
+                    loop {
+                        let prev = atomic.compare_and_exchange_weak(current, i);
+                        if prev == current {
+                            break;
+                        }
+                        current = prev;
+                    }
+                }
+                assert_eq!(atomic.load(), 99);
+            }
+
+            #[test]
+            fn test_compare_set_weak_with_zero() {
+                let atomic = <$atomic_type>::new(0);
+                assert!(atomic.compare_set_weak(0, 42).is_ok());
+                assert_eq!(atomic.load(), 42);
+            }
+
+            #[test]
+            fn test_compare_exchange_weak_with_zero() {
+                let atomic = <$atomic_type>::new(0);
+                let prev = atomic.compare_and_exchange_weak(0, 42);
+                assert_eq!(prev, 0);
+                assert_eq!(atomic.load(), 42);
             }
 
             #[test]
@@ -727,7 +818,7 @@ macro_rules! test_atomic_integer {
                         .compare_exchange(5, 15, Ordering::AcqRel, Ordering::Acquire);
                 assert!(result.is_err());
                 assert_eq!(result.unwrap_err(), 10);
-                assert_eq!(atomic.get(), 10);
+                assert_eq!(atomic.load(), 10);
             }
 
             #[test]
@@ -743,7 +834,7 @@ macro_rules! test_atomic_integer {
                 );
                 assert!(result.is_err());
                 assert_eq!(result.unwrap_err(), 10);
-                assert_eq!(atomic.get(), 10);
+                assert_eq!(atomic.load(), 10);
             }
 
             #[test]
@@ -755,23 +846,23 @@ macro_rules! test_atomic_integer {
                 // Test fetch_sub
                 let old = atomic.inner().fetch_sub(3, Ordering::Relaxed);
                 assert_eq!(old, 10);
-                assert_eq!(atomic.get(), 7);
+                assert_eq!(atomic.load(), 7);
 
                 // Test fetch_and
-                atomic.set(0b1111);
+                atomic.store(0b1111);
                 let old = atomic.inner().fetch_and(0b1100, Ordering::Relaxed);
                 assert_eq!(old, 0b1111);
-                assert_eq!(atomic.get(), 0b1100);
+                assert_eq!(atomic.load(), 0b1100);
 
                 // Test fetch_or
                 let old = atomic.inner().fetch_or(0b0011, Ordering::Relaxed);
                 assert_eq!(old, 0b1100);
-                assert_eq!(atomic.get(), 0b1111);
+                assert_eq!(atomic.load(), 0b1111);
 
                 // Test fetch_xor
                 let old = atomic.inner().fetch_xor(0b0101, Ordering::Relaxed);
                 assert_eq!(old, 0b1111);
-                assert_eq!(atomic.get(), 0b1010);
+                assert_eq!(atomic.load(), 0b1010);
             }
 
             #[test]
@@ -783,46 +874,38 @@ macro_rules! test_atomic_integer {
                 // Test fetch_max with larger value
                 let old = atomic.inner().fetch_max(20, Ordering::Relaxed);
                 assert_eq!(old, 10);
-                assert_eq!(atomic.get(), 20);
+                assert_eq!(atomic.load(), 20);
 
                 // Test fetch_max with smaller value
                 let old = atomic.inner().fetch_max(15, Ordering::Relaxed);
                 assert_eq!(old, 20);
-                assert_eq!(atomic.get(), 20);
+                assert_eq!(atomic.load(), 20);
 
                 // Test fetch_min with smaller value
                 let old = atomic.inner().fetch_min(5, Ordering::Relaxed);
                 assert_eq!(old, 20);
-                assert_eq!(atomic.get(), 5);
+                assert_eq!(atomic.load(), 5);
 
                 // Test fetch_min with larger value
                 let old = atomic.inner().fetch_min(10, Ordering::Relaxed);
                 assert_eq!(old, 5);
-                assert_eq!(atomic.get(), 5);
-            }
-
-            #[test]
-            fn test_accumulate_and_get_subtract() {
-                let atomic = <$atomic_type>::new(20);
-                let new = atomic.accumulate_and_get(5, |a, b| a.wrapping_sub(b));
-                assert_eq!(new, 15);
-                assert_eq!(atomic.get(), 15);
+                assert_eq!(atomic.load(), 5);
             }
 
             #[test]
             fn test_get_and_accumulate_divide() {
                 let atomic = <$atomic_type>::new(20);
-                let old = atomic.get_and_accumulate(4, |a, b| if b != 0 { a / b } else { a });
+                let old = atomic.fetch_accumulate(4, |a, b| if b != 0 { a / b } else { a });
                 assert_eq!(old, 20);
-                assert_eq!(atomic.get(), 5);
+                assert_eq!(atomic.load(), 5);
             }
 
             #[test]
             fn test_compare_and_exchange_success_path() {
                 let atomic = <$atomic_type>::new(10);
-                let prev = atomic.compare_and_exchange(10, 15);
+                let prev = atomic.compare_exchange(10, 15);
                 assert_eq!(prev, 10);
-                assert_eq!(atomic.get(), 15);
+                assert_eq!(atomic.load(), 15);
             }
 
             #[test]
@@ -830,7 +913,7 @@ macro_rules! test_atomic_integer {
                 let atomic = <$atomic_type>::new(10);
                 let prev = atomic.compare_and_exchange_weak(10, 15);
                 assert_eq!(prev, 10);
-                assert_eq!(atomic.get(), 15);
+                assert_eq!(atomic.load(), 15);
             }
 
             #[test]
@@ -844,7 +927,7 @@ macro_rules! test_atomic_integer {
                         .compare_exchange(10, 15, Ordering::AcqRel, Ordering::Acquire);
                 assert!(result.is_ok());
                 assert_eq!(result.unwrap(), 10);
-                assert_eq!(atomic.get(), 15);
+                assert_eq!(atomic.load(), 15);
             }
 
             #[test]
@@ -860,7 +943,7 @@ macro_rules! test_atomic_integer {
                 );
                 assert!(result.is_ok());
                 assert_eq!(result.unwrap(), 10);
-                assert_eq!(atomic.get(), 15);
+                assert_eq!(atomic.load(), 15);
             }
         }
     };

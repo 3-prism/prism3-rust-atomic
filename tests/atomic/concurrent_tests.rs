@@ -40,7 +40,7 @@ fn test_concurrent_increment() {
         let counter = counter.clone();
         let handle = thread::spawn(move || {
             for _ in 0..ITERATIONS_PER_THREAD {
-                counter.increment_and_get();
+                counter.fetch_inc();
             }
         });
         handles.push(handle);
@@ -50,7 +50,7 @@ fn test_concurrent_increment() {
         handle.join().unwrap();
     }
 
-    assert_eq!(counter.get(), (NUM_THREADS * ITERATIONS_PER_THREAD) as i32);
+    assert_eq!(counter.load(), (NUM_THREADS * ITERATIONS_PER_THREAD) as i32);
 }
 
 // Test concurrent decrements
@@ -63,7 +63,7 @@ fn test_concurrent_decrement() {
         let counter = counter.clone();
         let handle = thread::spawn(move || {
             for _ in 0..100 {
-                counter.decrement_and_get();
+                counter.fetch_dec();
             }
         });
         handles.push(handle);
@@ -73,7 +73,7 @@ fn test_concurrent_decrement() {
         handle.join().unwrap();
     }
 
-    assert_eq!(counter.get(), 10000 - (NUM_THREADS * 100) as i64);
+    assert_eq!(counter.load(), 10000 - (NUM_THREADS * 100) as i64);
 }
 
 // Test concurrent CAS operations
@@ -87,9 +87,9 @@ fn test_concurrent_cas() {
         let atomic = atomic.clone();
         let success_count = success_count.clone();
         let handle = thread::spawn(move || {
-            let mut current = atomic.get();
+            let mut current = atomic.load();
             loop {
-                match atomic.compare_and_set_weak(current, current + 1) {
+                match atomic.compare_set_weak(current, current + 1) {
                     Ok(_) => {
                         success_count.fetch_add(1, Ordering::Relaxed);
                         break;
@@ -105,7 +105,7 @@ fn test_concurrent_cas() {
         handle.join().unwrap();
     }
 
-    assert_eq!(atomic.get(), NUM_THREADS as u32);
+    assert_eq!(atomic.load(), NUM_THREADS as u32);
     assert_eq!(success_count.load(Ordering::Relaxed), NUM_THREADS);
 }
 
@@ -131,7 +131,7 @@ fn test_concurrent_swap() {
     }
 
     // The final value should be one of the thread IDs
-    let final_value = atomic.get();
+    let final_value = atomic.load();
     assert!(final_value >= 1 && final_value <= NUM_THREADS as i32);
 }
 
@@ -146,7 +146,7 @@ fn test_concurrent_flag() {
         let flag = flag.clone();
         let success_count = success_count.clone();
         let handle = thread::spawn(move || {
-            if flag.compare_and_set_if_false(true).is_ok() {
+            if flag.set_if_false(true).is_ok() {
                 success_count.fetch_add(1, Ordering::Relaxed);
             }
         });
@@ -158,7 +158,7 @@ fn test_concurrent_flag() {
     }
 
     // Only one thread should succeed
-    assert!(flag.get());
+    assert!(flag.load());
     assert_eq!(success_count.load(Ordering::Relaxed), 1);
 }
 
@@ -172,7 +172,7 @@ fn test_concurrent_toggle() {
         let flag = flag.clone();
         let handle = thread::spawn(move || {
             for _ in 0..100 {
-                flag.get_and_negate();
+                flag.fetch_not();
             }
         });
         handles.push(handle);
@@ -183,7 +183,7 @@ fn test_concurrent_toggle() {
     }
 
     // After even number of toggles, should be false
-    assert!(!flag.get());
+    assert!(!flag.load());
 }
 
 // Test concurrent floating-point additions
@@ -196,7 +196,7 @@ fn test_concurrent_float_add() {
         let sum = sum.clone();
         let handle = thread::spawn(move || {
             for _ in 0..100 {
-                sum.add(0.01);
+                sum.fetch_add(0.01);
             }
         });
         handles.push(handle);
@@ -207,7 +207,7 @@ fn test_concurrent_float_add() {
     }
 
     // Due to floating point precision, result may not be exact
-    let result = sum.get();
+    let result = sum.load();
     let expected = (NUM_THREADS * 100) as f32 * 0.01;
     assert!((result - expected).abs() < 0.1);
 }
@@ -222,7 +222,7 @@ fn test_concurrent_ref_update() {
         let atomic = atomic.clone();
         let handle = thread::spawn(move || {
             for _ in 0..100 {
-                atomic.update_and_get(|current| {
+                atomic.fetch_update(|current| {
                     let value = **current;
                     Arc::new(value + 1)
                 });
@@ -235,7 +235,7 @@ fn test_concurrent_ref_update() {
         handle.join().unwrap();
     }
 
-    assert_eq!(*atomic.get(), NUM_THREADS * 100);
+    assert_eq!(*atomic.load(), NUM_THREADS * 100);
 }
 
 // Test concurrent accumulate operations
@@ -247,7 +247,7 @@ fn test_concurrent_accumulate() {
     for _ in 0..5 {
         let atomic = atomic.clone();
         let handle = thread::spawn(move || {
-            atomic.accumulate_and_get(2, |a, b| a * b);
+            atomic.fetch_accumulate(2, |a, b| a * b);
         });
         handles.push(handle);
     }
@@ -257,7 +257,7 @@ fn test_concurrent_accumulate() {
     }
 
     // 1 * 2^5 = 32
-    assert_eq!(atomic.get(), 32);
+    assert_eq!(atomic.load(), 32);
 }
 
 // Test concurrent max operations
@@ -269,7 +269,7 @@ fn test_concurrent_max() {
     for i in 0..NUM_THREADS {
         let atomic = atomic.clone();
         let handle = thread::spawn(move || {
-            atomic.max_and_get((i * 10) as i32);
+            atomic.fetch_max((i * 10) as i32);
         });
         handles.push(handle);
     }
@@ -278,7 +278,7 @@ fn test_concurrent_max() {
         handle.join().unwrap();
     }
 
-    assert_eq!(atomic.get(), ((NUM_THREADS - 1) * 10) as i32);
+    assert_eq!(atomic.load(), ((NUM_THREADS - 1) * 10) as i32);
 }
 
 // Test concurrent min operations
@@ -290,7 +290,7 @@ fn test_concurrent_min() {
     for i in 0..NUM_THREADS {
         let atomic = atomic.clone();
         let handle = thread::spawn(move || {
-            atomic.min_and_get((100 - i * 5) as i32);
+            atomic.fetch_min((100 - i * 5) as i32);
         });
         handles.push(handle);
     }
@@ -299,7 +299,7 @@ fn test_concurrent_min() {
         handle.join().unwrap();
     }
 
-    assert_eq!(atomic.get(), (100 - (NUM_THREADS - 1) * 5) as i32);
+    assert_eq!(atomic.load(), (100 - (NUM_THREADS - 1) * 5) as i32);
 }
 
 // Test barrier synchronization with atomic operations
@@ -316,7 +316,7 @@ fn test_barrier_sync() {
             // All threads wait at the barrier
             barrier.wait();
             // Then all increment simultaneously
-            counter.increment_and_get();
+            counter.fetch_inc();
         });
         handles.push(handle);
     }
@@ -325,7 +325,7 @@ fn test_barrier_sync() {
         handle.join().unwrap();
     }
 
-    assert_eq!(counter.get(), NUM_THREADS);
+    assert_eq!(counter.load(), NUM_THREADS);
 }
 
 // Test producer-consumer pattern with atomic flag
@@ -340,16 +340,16 @@ fn test_producer_consumer() {
     // Producer thread
     let producer = thread::spawn(move || {
         thread::sleep(Duration::from_millis(10));
-        data_clone.set(42);
-        ready_clone.set(true);
+        data_clone.store(42);
+        ready_clone.store(true);
     });
 
     // Consumer thread
     let consumer = thread::spawn(move || {
-        while !ready.get() {
+        while !ready.load() {
             thread::yield_now();
         }
-        data.get()
+        data.load()
     });
 
     producer.join().unwrap();
@@ -370,17 +370,17 @@ fn test_spinlock_pattern() {
         let handle = thread::spawn(move || {
             for _ in 0..10 {
                 // Acquire lock
-                while lock.compare_and_set_if_false(true).is_err() {
+                while lock.set_if_false(true).is_err() {
                     thread::yield_now();
                 }
 
                 // Critical section
-                let value = counter.get();
+                let value = counter.load();
                 thread::yield_now(); // Simulate some work
-                counter.set(value + 1);
+                counter.store(value + 1);
 
                 // Release lock
-                lock.set(false);
+                lock.store(false);
             }
         });
         handles.push(handle);
@@ -390,7 +390,7 @@ fn test_spinlock_pattern() {
         handle.join().unwrap();
     }
 
-    assert_eq!(counter.get(), (NUM_THREADS * 10) as i32);
+    assert_eq!(counter.load(), (NUM_THREADS * 10) as i32);
 }
 
 // Test concurrent bitwise operations
@@ -403,7 +403,7 @@ fn test_concurrent_bitwise() {
         let atomic = atomic.clone();
         let handle = thread::spawn(move || {
             let bit = 1u32 << (i % 32);
-            atomic.get_and_bit_or(bit);
+            atomic.fetch_or(bit);
         });
         handles.push(handle);
     }
@@ -412,7 +412,7 @@ fn test_concurrent_bitwise() {
         handle.join().unwrap();
     }
 
-    let result = atomic.get();
+    let result = atomic.load();
     // Check that all bits were set
     for i in 0..NUM_THREADS.min(32) {
         let bit = 1u32 << i;
@@ -430,15 +430,15 @@ fn test_memory_ordering_visibility() {
     let flag_clone = flag.clone();
 
     let writer = thread::spawn(move || {
-        data_clone.set(42);
-        flag_clone.set(true);
+        data_clone.store(42);
+        flag_clone.store(true);
     });
 
     let reader = thread::spawn(move || {
-        while !flag.get() {
+        while !flag.load() {
             thread::yield_now();
         }
-        data.get()
+        data.load()
     });
 
     writer.join().unwrap();
