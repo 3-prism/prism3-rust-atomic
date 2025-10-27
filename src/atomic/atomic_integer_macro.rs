@@ -29,7 +29,7 @@
 /// * `$value_type` - The value type (e.g., `i32`)
 /// * `$doc_type` - The type description for documentation (e.g., "32-bit
 ///   signed integer")
-macro_rules! impl_atomic_integer {
+macro_rules! impl_atomic_number {
     ($name:ident, $inner_type:ty, $value_type:ty, $doc_type:expr) => {
         #[doc = concat!("Atomic ", $doc_type, ".")]
         ///
@@ -1045,4 +1045,4 @@ macro_rules! impl_atomic_integer {
 }
 
 #[allow(unused_imports)]
-pub(crate) use impl_atomic_integer;
+pub(crate) use impl_atomic_number;

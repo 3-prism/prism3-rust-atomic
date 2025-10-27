@@ -19,7 +19,7 @@
 use std::fmt;
 use std::sync::atomic::Ordering;
 
-impl_atomic_integer!(
+impl_atomic_number!(
     AtomicIsize,
     std::sync::atomic::AtomicIsize,
     isize,

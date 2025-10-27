@@ -19,7 +19,7 @@
 use std::fmt;
 use std::sync::atomic::Ordering;
 
-impl_atomic_integer!(
+impl_atomic_number!(
     AtomicU8,
     std::sync::atomic::AtomicU8,
     u8,
