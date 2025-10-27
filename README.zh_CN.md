@@ -27,17 +27,17 @@ Prism3 Atomic 是一个全面的原子操作库，提供易于使用的原子类
 ### 🔢 **原子整数类型**
 - **有符号整数**：`AtomicI8`、`AtomicI16`、`AtomicI32`、`AtomicI64`、`AtomicIsize`
 - **无符号整数**：`AtomicU8`、`AtomicU16`、`AtomicU32`、`AtomicU64`、`AtomicUsize`
-- **丰富的操作**：自增、自减、加法、减法、位运算、最大值/最小值
-- **函数式更新**：`update_and_get`、`get_and_update`、`accumulate_and_get`
+- **丰富的操作**：自增、自减、加法、减法、乘法、除法、位运算、最大值/最小值
+- **函数式更新**：`fetch_update`、`fetch_accumulate`
 
 ### 🔘 **原子布尔类型**
 - **AtomicBool**：布尔原子操作
 - **特殊操作**：设置、清除、取反、逻辑与/或/异或
-- **条件 CAS**：`compare_and_set_if_false`、`compare_and_set_if_true`
+- **条件 CAS**：`set_if_false`、`set_if_true`
 
 ### 🔢 **原子浮点数类型**
 - **AtomicF32/AtomicF64**：32 位和 64 位浮点数原子操作
-- **算术操作**：加、减、乘、除（通过 CAS 循环实现）
+- **算术操作**：`fetch_add`、`fetch_sub`、`fetch_mul`、`fetch_div`（通过 CAS 循环实现）
 - **函数式更新**：通过闭包进行自定义操作
 
 ### 🔗 **原子引用类型**
@@ -46,9 +46,8 @@ Prism3 Atomic 是一个全面的原子操作库，提供易于使用的原子类
 - **函数式更新**：原子地转换引用
 
 ### 🎯 **Trait 抽象**
-- **Atomic**：通用原子操作 trait
-- **UpdatableAtomic**：函数式更新操作 trait
-- **AtomicInteger**：整数特定操作 trait
+- **Atomic**：通用原子操作 trait（包含 `fetch_update`）
+- **AtomicNumber**：数字类型算术操作 trait（整数和浮点数通用）
 
 ## 安装
 
@@ -77,7 +76,7 @@ fn main() {
         let counter = counter.clone();
         let handle = thread::spawn(move || {
             for _ in 0..1000 {
-                counter.increment_and_get();
+                counter.fetch_inc();
             }
         });
         handles.push(handle);
@@ -89,8 +88,8 @@ fn main() {
     }
 
     // 验证结果
-    assert_eq!(counter.get(), 10000);
-    println!("最终计数：{}", counter.get());
+    assert_eq!(counter.load(), 10000);
+    println!("最终计数：{}", counter.load());
 }
 ```
 
@@ -100,7 +99,7 @@ fn main() {
 use prism3_atomic::AtomicI32;
 
 fn increment_even_only(atomic: &AtomicI32) -> Result<i32, &'static str> {
-    let mut current = atomic.get();
+    let mut current = atomic.load();
     loop {
         // 只对偶数值进行递增
         if current % 2 != 0 {
@@ -108,7 +107,7 @@ fn increment_even_only(atomic: &AtomicI32) -> Result<i32, &'static str> {
         }
 
         let new = current + 2;
-        match atomic.compare_and_set(current, new) {
+        match atomic.compare_set(current, new) {
             Ok(_) => return Ok(new),
             Err(actual) => current = actual, // 重试
         }
@@ -121,7 +120,7 @@ fn main() {
         Ok(new_value) => println!("成功递增到：{}", new_value),
         Err(e) => println!("失败：{}", e),
     }
-    assert_eq!(atomic.get(), 12);
+    assert_eq!(atomic.load(), 12);
 }
 ```
 
@@ -133,8 +132,8 @@ use prism3_atomic::AtomicI32;
 fn main() {
     let atomic = AtomicI32::new(10);
 
-    // 使用函数更新
-    let new_value = atomic.update_and_get(|x| {
+    // 使用函数更新（返回旧值）
+    let old_value = atomic.fetch_update(|x| {
         if x < 100 {
             x * 2
         } else {
@@ -142,13 +141,15 @@ fn main() {
         }
     });
 
-    assert_eq!(new_value, 20);
-    println!("更新后的值：{}", new_value);
+    assert_eq!(old_value, 10);
+    assert_eq!(atomic.load(), 20);
+    println!("更新后的值：{}", atomic.load());
 
-    // 累积操作
-    let result = atomic.accumulate_and_get(5, |a, b| a + b);
-    assert_eq!(result, 25);
-    println!("累积后的值：{}", result);
+    // 累积操作（返回旧值）
+    let old_result = atomic.fetch_accumulate(5, |a, b| a + b);
+    assert_eq!(old_result, 20);
+    assert_eq!(atomic.load(), 25);
+    println!("累积后的值：{}", atomic.load());
 }
 ```
 
@@ -180,17 +181,18 @@ fn main() {
 
     let old_config = atomic_config.swap(new_config);
     println!("旧配置：{:?}", old_config);
-    println!("新配置：{:?}", atomic_config.get());
+    println!("新配置：{:?}", atomic_config.load());
 
-    // 使用函数更新
-    atomic_config.update_and_get(|current| {
+    // 使用函数更新（返回旧值）
+    let old = atomic_config.fetch_update(|current| {
         Arc::new(Config {
             timeout: current.timeout * 2,
             max_retries: current.max_retries + 1,
         })
     });
 
-    println!("更新后的配置：{:?}", atomic_config.get());
+    println!("更新前的配置：{:?}", old);
+    println!("更新后的配置：{:?}", atomic_config.load());
 }
 ```
 
@@ -213,7 +215,7 @@ impl Service {
 
     fn start(&self) {
         // 只有当前未运行时才启动
-        if self.running.compare_and_set_if_false(true).is_ok() {
+        if self.running.set_if_false(true).is_ok() {
             println!("服务启动成功");
         } else {
             println!("服务已经在运行");
@@ -222,7 +224,7 @@ impl Service {
 
     fn stop(&self) {
         // 只有当前运行时才停止
-        if self.running.compare_and_set_if_true(false).is_ok() {
+        if self.running.set_if_true(false).is_ok() {
             println!("服务停止成功");
         } else {
             println!("服务已经停止");
@@ -230,7 +232,7 @@ impl Service {
     }
 
     fn is_running(&self) -> bool {
-        self.running.get()
+        self.running.load()
     }
 }
 
@@ -276,7 +278,7 @@ fn main() {
     }
 
     // 注意：由于浮点数精度问题，结果可能不是精确的 10.0
-    let result = sum.get();
+    let result = sum.load();
     println!("累加结果：{:.6}", result);
     println!("误差：{:.6}", (result - 10.0).abs());
 }
@@ -289,66 +291,69 @@ fn main() {
 | 方法 | 描述 | 内存序 |
 |-----|------|--------|
 | `new(value)` | 创建新的原子值 | - |
-| `get()` | 获取当前值 | Acquire |
-| `set(value)` | 设置新值 | Release |
+| `load()` | 加载当前值 | Acquire |
+| `store(value)` | 存储新值 | Release |
 | `swap(value)` | 交换值，返回旧值 | AcqRel |
-| `compare_and_set(current, new)` | CAS 操作，返回 Result | AcqRel/Acquire |
+| `compare_set(current, new)` | CAS 操作，返回 Result | AcqRel/Acquire |
+| `compare_set_weak(current, new)` | 弱 CAS，返回 Result | AcqRel/Acquire |
 | `compare_and_exchange(current, new)` | CAS 操作，返回实际值 | AcqRel/Acquire |
+| `compare_and_exchange_weak(current, new)` | 弱 CAS，返回实际值 | AcqRel/Acquire |
+| `fetch_update(f)` | 函数式更新，返回旧值 | AcqRel/Acquire |
 | `inner()` | 访问底层标准库类型 | - |
 
 ### 整数操作
 
 | 方法 | 描述 | 内存序 |
 |-----|------|--------|
-| `get_and_increment()` | 后增 | Relaxed |
-| `increment_and_get()` | 前增 | Relaxed |
-| `get_and_decrement()` | 后减 | Relaxed |
-| `decrement_and_get()` | 前减 | Relaxed |
-| `get_and_add(delta)` | 后加 | Relaxed |
-| `add_and_get(delta)` | 前加 | Relaxed |
-| `get_and_sub(delta)` | 后减 | Relaxed |
-| `sub_and_get(delta)` | 前减 | Relaxed |
-| `get_and_bitand(value)` | 按位与 | AcqRel |
-| `get_and_bitor(value)` | 按位或 | AcqRel |
-| `get_and_bitxor(value)` | 按位异或 | AcqRel |
-| `get_and_max(value)` | 原子取最大值 | AcqRel |
-| `get_and_min(value)` | 原子取最小值 | AcqRel |
-| `update_and_get(f)` | 函数式更新 | AcqRel |
-| `get_and_update(f)` | 函数式更新 | AcqRel |
+| `fetch_inc()` | 后增，返回旧值 | Relaxed |
+| `fetch_dec()` | 后减，返回旧值 | Relaxed |
+| `fetch_add(delta)` | 后加，返回旧值 | Relaxed |
+| `fetch_sub(delta)` | 后减，返回旧值 | Relaxed |
+| `fetch_mul(factor)` | 后乘，返回旧值 | AcqRel（CAS 循环） |
+| `fetch_div(divisor)` | 后除，返回旧值 | AcqRel（CAS 循环） |
+| `fetch_and(value)` | 按位与，返回旧值 | AcqRel |
+| `fetch_or(value)` | 按位或，返回旧值 | AcqRel |
+| `fetch_xor(value)` | 按位异或，返回旧值 | AcqRel |
+| `fetch_not()` | 按位取反，返回旧值 | AcqRel |
+| `fetch_max(value)` | 原子取最大值，返回旧值 | AcqRel |
+| `fetch_min(value)` | 原子取最小值，返回旧值 | AcqRel |
+| `fetch_update(f)` | 函数式更新，返回旧值 | AcqRel/Acquire |
+| `fetch_accumulate(x, f)` | 累积，返回旧值 | AcqRel/Acquire |
 
 ### 布尔操作
 
-| 方法 | 描述 |
-|-----|------|
-| `get_and_set()` | 设置为 true，返回旧值 |
-| `get_and_clear()` | 设置为 false，返回旧值 |
-| `get_and_negate()` | 取反，返回旧值 |
-| `get_and_logical_and(value)` | 逻辑与 |
-| `get_and_logical_or(value)` | 逻辑或 |
-| `get_and_logical_xor(value)` | 逻辑异或 |
-| `compare_and_set_if_false(new)` | 如果为 false 则 CAS |
-| `compare_and_set_if_true(new)` | 如果为 true 则 CAS |
+| 方法 | 描述 | 内存序 |
+|-----|------|--------|
+| `fetch_set()` | 设置为 true，返回旧值 | AcqRel |
+| `fetch_clear()` | 设置为 false，返回旧值 | AcqRel |
+| `fetch_not()` | 取反，返回旧值 | AcqRel |
+| `fetch_and(value)` | 逻辑与，返回旧值 | AcqRel |
+| `fetch_or(value)` | 逻辑或，返回旧值 | AcqRel |
+| `fetch_xor(value)` | 逻辑异或，返回旧值 | AcqRel |
+| `set_if_false(new)` | 如果为 false 则 CAS | AcqRel/Acquire |
+| `set_if_true(new)` | 如果为 true 则 CAS | AcqRel/Acquire |
 
 ### 浮点数操作
 
-| 方法 | 描述 |
-|-----|------|
-| `add(delta)` | 原子加法（CAS 循环） |
-| `sub(delta)` | 原子减法（CAS 循环） |
-| `mul(factor)` | 原子乘法（CAS 循环） |
-| `div(divisor)` | 原子除法（CAS 循环） |
-| `update_and_get(f)` | 函数式更新 |
-| `get_and_update(f)` | 函数式更新 |
+| 方法 | 描述 | 内存序 |
+|-----|------|--------|
+| `fetch_add(delta)` | 原子加法，返回旧值 | AcqRel（CAS 循环） |
+| `fetch_sub(delta)` | 原子减法，返回旧值 | AcqRel（CAS 循环） |
+| `fetch_mul(factor)` | 原子乘法，返回旧值 | AcqRel（CAS 循环） |
+| `fetch_div(divisor)` | 原子除法，返回旧值 | AcqRel（CAS 循环） |
+| `fetch_update(f)` | 函数式更新，返回旧值 | AcqRel/Acquire |
 
 ## 内存序策略
 
 | 操作类型 | 默认内存序 | 原因 |
 |---------|-----------|------|
-| **纯读操作** (`get()`) | `Acquire` | 保证读取最新值 |
-| **纯写操作** (`set()`) | `Release` | 保证写入可见 |
+| **纯读操作** (`load()`) | `Acquire` | 保证读取最新值 |
+| **纯写操作** (`store()`) | `Release` | 保证写入可见 |
 | **读-改-写操作** (`swap()`、CAS) | `AcqRel` | 同时保证读和写的正确性 |
-| **计数器操作** (`increment_and_get()`) | `Relaxed` | 大多数场景只需要保证计数正确 |
-| **高级 API** (`update_and_get()`) | `AcqRel` | 保证状态一致性 |
+| **计数器操作** (`fetch_inc()`、`fetch_add()`) | `Relaxed` | 纯计数场景，无需同步其他数据 |
+| **位运算操作** (`fetch_and()`、`fetch_or()`) | `AcqRel` | 通常用于标志位同步 |
+| **最大/最小值操作** (`fetch_max()`、`fetch_min()`) | `AcqRel` | 常与阈值判断配合使用 |
+| **函数式更新** (`fetch_update()`) | `AcqRel` / `Acquire` | CAS 循环标准语义 |
 
 ### 高级用法：直接访问底层类型
 
@@ -361,7 +366,7 @@ use prism3_atomic::AtomicI32;
 let atomic = AtomicI32::new(0);
 
 // 99% 的场景：使用简单 API
-let value = atomic.get();
+let value = atomic.load();
 
 // 1% 的场景：需要精细控制
 let value = atomic.inner().load(Ordering::Relaxed);
@@ -390,7 +395,7 @@ atomic.inner().store(42, Ordering::Release);
 ```rust
 // 我们的封装
 let atomic = AtomicI32::new(0);
-let value = atomic.get();
+let value = atomic.load();
 
 // 编译后与以下代码生成相同的机器码
 let atomic = std::sync::atomic::AtomicI32::new(0);

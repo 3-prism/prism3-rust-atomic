@@ -27,17 +27,17 @@ Prism3 Atomic is a comprehensive atomic operations library that provides easy-to
 ### 🔢 **Atomic Integer Types**
 - **Signed Integers**: `AtomicI8`, `AtomicI16`, `AtomicI32`, `AtomicI64`, `AtomicIsize`
 - **Unsigned Integers**: `AtomicU8`, `AtomicU16`, `AtomicU32`, `AtomicU64`, `AtomicUsize`
-- **Rich Operations**: increment, decrement, add, subtract, bitwise operations, max/min
-- **Functional Updates**: `update_and_get`, `get_and_update`, `accumulate_and_get`
+- **Rich Operations**: increment, decrement, add, subtract, multiply, divide, bitwise operations, max/min
+- **Functional Updates**: `fetch_update`, `fetch_accumulate`
 
 ### 🔘 **Atomic Boolean Type**
 - **AtomicBool**: Boolean atomic operations
 - **Special Operations**: set, clear, negate, logical AND/OR/XOR
-- **Conditional CAS**: `compare_and_set_if_false`, `compare_and_set_if_true`
+- **Conditional CAS**: `set_if_false`, `set_if_true`
 
 ### 🔢 **Atomic Floating-Point Types**
 - **AtomicF32/AtomicF64**: 32-bit and 64-bit floating-point atomics
-- **Arithmetic Operations**: add, subtract, multiply, divide (via CAS loop)
+- **Arithmetic Operations**: `fetch_add`, `fetch_sub`, `fetch_mul`, `fetch_div` (via CAS loop)
 - **Functional Updates**: Custom operations via closures
 
 ### 🔗 **Atomic Reference Type**
@@ -46,9 +46,8 @@ Prism3 Atomic is a comprehensive atomic operations library that provides easy-to
 - **Functional Updates**: Transform references atomically
 
 ### 🎯 **Trait Abstractions**
-- **Atomic**: Common atomic operations trait
-- **UpdatableAtomic**: Functional update operations trait
-- **AtomicInteger**: Integer-specific operations trait
+- **Atomic**: Common atomic operations trait (includes `fetch_update`)
+- **AtomicNumber**: Arithmetic operations trait for numeric types (integers and floats)
 
 ## Installation
 
@@ -77,7 +76,7 @@ fn main() {
         let counter = counter.clone();
         let handle = thread::spawn(move || {
             for _ in 0..1000 {
-                counter.increment_and_get();
+                counter.fetch_inc();
             }
         });
         handles.push(handle);
@@ -89,8 +88,8 @@ fn main() {
     }
 
     // Verify result
-    assert_eq!(counter.get(), 10000);
-    println!("Final count: {}", counter.get());
+    assert_eq!(counter.load(), 10000);
+    println!("Final count: {}", counter.load());
 }
 ```
 
@@ -100,7 +99,7 @@ fn main() {
 use prism3_atomic::AtomicI32;
 
 fn increment_even_only(atomic: &AtomicI32) -> Result<i32, &'static str> {
-    let mut current = atomic.get();
+    let mut current = atomic.load();
     loop {
         // Only increment even values
         if current % 2 != 0 {
@@ -108,7 +107,7 @@ fn increment_even_only(atomic: &AtomicI32) -> Result<i32, &'static str> {
         }
 
         let new = current + 2;
-        match atomic.compare_and_set(current, new) {
+        match atomic.compare_set(current, new) {
             Ok(_) => return Ok(new),
             Err(actual) => current = actual, // Retry
         }
@@ -121,7 +120,7 @@ fn main() {
         Ok(new_value) => println!("Successfully incremented to: {}", new_value),
         Err(e) => println!("Failed: {}", e),
     }
-    assert_eq!(atomic.get(), 12);
+    assert_eq!(atomic.load(), 12);
 }
 ```
 
@@ -133,8 +132,8 @@ use prism3_atomic::AtomicI32;
 fn main() {
     let atomic = AtomicI32::new(10);
 
-    // Update using a function
-    let new_value = atomic.update_and_get(|x| {
+    // Update using a function (returns old value)
+    let old_value = atomic.fetch_update(|x| {
         if x < 100 {
             x * 2
         } else {
@@ -142,13 +141,15 @@ fn main() {
         }
     });
 
-    assert_eq!(new_value, 20);
-    println!("Updated value: {}", new_value);
+    assert_eq!(old_value, 10);
+    assert_eq!(atomic.load(), 20);
+    println!("Updated value: {}", atomic.load());
 
-    // Accumulate operation
-    let result = atomic.accumulate_and_get(5, |a, b| a + b);
-    assert_eq!(result, 25);
-    println!("Accumulated value: {}", result);
+    // Accumulate operation (returns old value)
+    let old_result = atomic.fetch_accumulate(5, |a, b| a + b);
+    assert_eq!(old_result, 20);
+    assert_eq!(atomic.load(), 25);
+    println!("Accumulated value: {}", atomic.load());
 }
 ```
 
@@ -180,17 +181,18 @@ fn main() {
 
     let old_config = atomic_config.swap(new_config);
     println!("Old config: {:?}", old_config);
-    println!("New config: {:?}", atomic_config.get());
+    println!("New config: {:?}", atomic_config.load());
 
-    // Update using a function
-    atomic_config.update_and_get(|current| {
+    // Update using a function (returns old value)
+    let old = atomic_config.fetch_update(|current| {
         Arc::new(Config {
             timeout: current.timeout * 2,
             max_retries: current.max_retries + 1,
         })
     });
 
-    println!("Updated config: {:?}", atomic_config.get());
+    println!("Previous config: {:?}", old);
+    println!("Updated config: {:?}", atomic_config.load());
 }
 ```
 
@@ -213,7 +215,7 @@ impl Service {
 
     fn start(&self) {
         // Only start if not already running
-        if self.running.compare_and_set_if_false(true).is_ok() {
+        if self.running.set_if_false(true).is_ok() {
             println!("Service started successfully");
         } else {
             println!("Service is already running");
@@ -222,7 +224,7 @@ impl Service {
 
     fn stop(&self) {
         // Only stop if currently running
-        if self.running.compare_and_set_if_true(false).is_ok() {
+        if self.running.set_if_true(false).is_ok() {
             println!("Service stopped successfully");
         } else {
             println!("Service is already stopped");
@@ -230,7 +232,7 @@ impl Service {
     }
 
     fn is_running(&self) -> bool {
-        self.running.get()
+        self.running.load()
     }
 }
 
@@ -276,7 +278,7 @@ fn main() {
     }
 
     // Note: Due to floating-point precision, result may not be exactly 10.0
-    let result = sum.get();
+    let result = sum.load();
     println!("Sum: {:.6}", result);
     println!("Error: {:.6}", (result - 10.0).abs());
 }
@@ -289,66 +291,69 @@ fn main() {
 | Method | Description | Memory Ordering |
 |--------|-------------|-----------------|
 | `new(value)` | Create new atomic | - |
-| `get()` | Get current value | Acquire |
-| `set(value)` | Set new value | Release |
+| `load()` | Load current value | Acquire |
+| `store(value)` | Store new value | Release |
 | `swap(value)` | Swap value, return old | AcqRel |
-| `compare_and_set(current, new)` | CAS operation, return Result | AcqRel/Acquire |
+| `compare_set(current, new)` | CAS operation, return Result | AcqRel/Acquire |
+| `compare_set_weak(current, new)` | Weak CAS, return Result | AcqRel/Acquire |
 | `compare_and_exchange(current, new)` | CAS operation, return actual value | AcqRel/Acquire |
+| `compare_and_exchange_weak(current, new)` | Weak CAS, return actual value | AcqRel/Acquire |
+| `fetch_update(f)` | Functional update, return old | AcqRel/Acquire |
 | `inner()` | Access underlying std type | - |
 
 ### Integer Operations
 
 | Method | Description | Memory Ordering |
 |--------|-------------|-----------------|
-| `get_and_increment()` | Post-increment | Relaxed |
-| `increment_and_get()` | Pre-increment | Relaxed |
-| `get_and_decrement()` | Post-decrement | Relaxed |
-| `decrement_and_get()` | Pre-decrement | Relaxed |
-| `get_and_add(delta)` | Post-add | Relaxed |
-| `add_and_get(delta)` | Pre-add | Relaxed |
-| `get_and_sub(delta)` | Post-subtract | Relaxed |
-| `sub_and_get(delta)` | Pre-subtract | Relaxed |
-| `get_and_bitand(value)` | Bitwise AND | AcqRel |
-| `get_and_bitor(value)` | Bitwise OR | AcqRel |
-| `get_and_bitxor(value)` | Bitwise XOR | AcqRel |
-| `get_and_max(value)` | Atomic max | AcqRel |
-| `get_and_min(value)` | Atomic min | AcqRel |
-| `update_and_get(f)` | Functional update | AcqRel |
-| `get_and_update(f)` | Functional update | AcqRel |
+| `fetch_inc()` | Post-increment, return old | Relaxed |
+| `fetch_dec()` | Post-decrement, return old | Relaxed |
+| `fetch_add(delta)` | Post-add, return old | Relaxed |
+| `fetch_sub(delta)` | Post-subtract, return old | Relaxed |
+| `fetch_mul(factor)` | Post-multiply, return old | AcqRel (CAS loop) |
+| `fetch_div(divisor)` | Post-divide, return old | AcqRel (CAS loop) |
+| `fetch_and(value)` | Bitwise AND, return old | AcqRel |
+| `fetch_or(value)` | Bitwise OR, return old | AcqRel |
+| `fetch_xor(value)` | Bitwise XOR, return old | AcqRel |
+| `fetch_not()` | Bitwise NOT, return old | AcqRel |
+| `fetch_max(value)` | Atomic max, return old | AcqRel |
+| `fetch_min(value)` | Atomic min, return old | AcqRel |
+| `fetch_update(f)` | Functional update, return old | AcqRel/Acquire |
+| `fetch_accumulate(x, f)` | Accumulate, return old | AcqRel/Acquire |
 
 ### Boolean Operations
 
-| Method | Description |
-|--------|-------------|
-| `get_and_set()` | Set to true, return old |
-| `get_and_clear()` | Set to false, return old |
-| `get_and_negate()` | Negate, return old |
-| `get_and_logical_and(value)` | Logical AND |
-| `get_and_logical_or(value)` | Logical OR |
-| `get_and_logical_xor(value)` | Logical XOR |
-| `compare_and_set_if_false(new)` | CAS if false |
-| `compare_and_set_if_true(new)` | CAS if true |
+| Method | Description | Memory Ordering |
+|--------|-------------|-----------------|
+| `fetch_set()` | Set to true, return old | AcqRel |
+| `fetch_clear()` | Set to false, return old | AcqRel |
+| `fetch_not()` | Negate, return old | AcqRel |
+| `fetch_and(value)` | Logical AND, return old | AcqRel |
+| `fetch_or(value)` | Logical OR, return old | AcqRel |
+| `fetch_xor(value)` | Logical XOR, return old | AcqRel |
+| `set_if_false(new)` | CAS if false | AcqRel/Acquire |
+| `set_if_true(new)` | CAS if true | AcqRel/Acquire |
 
 ### Floating-Point Operations
 
-| Method | Description |
-|--------|-------------|
-| `add(delta)` | Atomic add (CAS loop) |
-| `sub(delta)` | Atomic subtract (CAS loop) |
-| `mul(factor)` | Atomic multiply (CAS loop) |
-| `div(divisor)` | Atomic divide (CAS loop) |
-| `update_and_get(f)` | Functional update |
-| `get_and_update(f)` | Functional update |
+| Method | Description | Memory Ordering |
+|--------|-------------|-----------------|
+| `fetch_add(delta)` | Atomic add, return old | AcqRel (CAS loop) |
+| `fetch_sub(delta)` | Atomic subtract, return old | AcqRel (CAS loop) |
+| `fetch_mul(factor)` | Atomic multiply, return old | AcqRel (CAS loop) |
+| `fetch_div(divisor)` | Atomic divide, return old | AcqRel (CAS loop) |
+| `fetch_update(f)` | Functional update, return old | AcqRel/Acquire |
 
 ## Memory Ordering Strategy
 
 | Operation Type | Default Ordering | Reason |
 |---------------|------------------|--------|
-| **Pure Read** (`get()`) | `Acquire` | Ensure reading latest value |
-| **Pure Write** (`set()`) | `Release` | Ensure write visibility |
+| **Pure Read** (`load()`) | `Acquire` | Ensure reading latest value |
+| **Pure Write** (`store()`) | `Release` | Ensure write visibility |
 | **Read-Modify-Write** (`swap()`, CAS) | `AcqRel` | Ensure both read and write correctness |
-| **Counter Operations** (`increment_and_get()`) | `Relaxed` | Most scenarios only need count correctness |
-| **Advanced API** (`update_and_get()`) | `AcqRel` | Ensure state consistency |
+| **Counter Operations** (`fetch_inc()`, `fetch_add()`) | `Relaxed` | Pure counting, no need to sync other data |
+| **Bitwise Operations** (`fetch_and()`, `fetch_or()`) | `AcqRel` | Usually used for flag synchronization |
+| **Max/Min Operations** (`fetch_max()`, `fetch_min()`) | `AcqRel` | Often used with threshold checks |
+| **Functional Updates** (`fetch_update()`) | `AcqRel` / `Acquire` | CAS loop standard semantics |
 
 ### Advanced Usage: Direct Access to Underlying Types
 
@@ -361,7 +366,7 @@ use prism3_atomic::AtomicI32;
 let atomic = AtomicI32::new(0);
 
 // 99% of scenarios: use simple API
-let value = atomic.get();
+let value = atomic.load();
 
 // 1% of scenarios: need fine-grained control
 let value = atomic.inner().load(Ordering::Relaxed);
@@ -390,7 +395,7 @@ All wrapper types use `#[repr(transparent)]` and `#[inline]` to ensure zero over
 ```rust
 // Our wrapper
 let atomic = AtomicI32::new(0);
-let value = atomic.get();
+let value = atomic.load();
 
 // Compiles to the same code as
 let atomic = std::sync::atomic::AtomicI32::new(0);
