@@ -1044,4 +1044,5 @@ macro_rules! impl_atomic_integer {
     };
 }
 
+#[allow(unused_imports)]
 pub(crate) use impl_atomic_integer;

@@ -19,8 +19,6 @@
 use std::fmt;
 use std::sync::atomic::Ordering;
 
-use crate::atomic::atomic_integer_macro::impl_atomic_integer;
-
 impl_atomic_integer!(
     AtomicI64,
     std::sync::atomic::AtomicI64,
