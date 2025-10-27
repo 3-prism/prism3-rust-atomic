@@ -29,6 +29,9 @@ jobs:
             - v3-cargo-cache-nightly-{{ arch }}-{{ checksum "Cargo.toml" }}-
             - v3-cargo-cache-nightly-{{ arch }}-
       - run:
+          name: Install rustfmt component
+          command: rustup component add rustfmt
+      - run:
           name: Check code format
           command: cargo fmt -- --check
       - run:
