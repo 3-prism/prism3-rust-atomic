@@ -1,7 +1,7 @@
 # Prism3 Atomic
 
-[![CircleCI](https://circleci.com/gh/3-prism/rust-common.svg?style=shield)](https://circleci.com/gh/3-prism/rust-common)
-[![Coverage Status](https://coveralls.io/repos/github/3-prism/rust-common/badge.svg?branch=main)](https://coveralls.io/github/3-prism/rust-common?branch=main)
+[![CircleCI](https://circleci.com/gh/3-prism/prism3-rust-atomic.svg?style=shield)](https://circleci.com/gh/3-prism/prism3-rust-atomic)
+[![Coverage Status](https://coveralls.io/repos/github/3-prism/prism3-rust-atomic/badge.svg?branch=main)](https://coveralls.io/github/3-prism/prism3-rust-atomic?branch=main)
 [![Crates.io](https://img.shields.io/crates/v/prism3-atomic.svg?color=blue)](https://crates.io/crates/prism3-atomic)
 [![Rust](https://img.shields.io/badge/rust-1.70+-blue.svg?logo=rust)](https://www.rust-lang.org)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
@@ -476,9 +476,9 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## Related Projects
 
-- [prism3-rust-core](https://github.com/3-prism/rust-common/tree/main/prism3-rust-core) - Core utilities and data types
-- [prism3-rust-concurrent](https://github.com/3-prism/rust-common/tree/main/prism3-rust-concurrent) - Concurrency utilities
-- [prism3-rust-function](https://github.com/3-prism/rust-common/tree/main/prism3-rust-function) - Functional programming utilities
+- [prism3-rust-core](https://github.com/3-prism/prism3-rust-core) - Core utilities and data types
+- [prism3-rust-concurrent](https://github.com/3-prism/prism3-rust-concurrent) - Concurrency utilities
+- [prism3-rust-function](https://github.com/3-prism/prism3-rust-function) - Functional programming utilities
 
 ---
 
