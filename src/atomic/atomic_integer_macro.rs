@@ -453,29 +453,6 @@ macro_rules! impl_atomic_integer {
                 self.inner.fetch_add(1, Ordering::Relaxed)
             }
 
-            /// Increments the value by 1, returning the new value.
-            ///
-            /// Uses `Relaxed` ordering.
-            ///
-            /// # Returns
-            ///
-            /// The new value after incrementing.
-            ///
-            /// # Example
-            ///
-            /// ```rust
-            #[doc = concat!("use prism3_rust_concurrent::atomic::", stringify!($name), ";")]
-            ///
-            #[doc = concat!("let atomic = ", stringify!($name), "::new(10);")]
-            /// let new = atomic.fetch_inc_and_get();
-            /// assert_eq!(new, 11);
-            /// assert_eq!(atomic.load(), 11);
-            /// ```
-            #[inline]
-            pub fn fetch_inc_and_get(&self) -> $value_type {
-                self.inner.fetch_add(1, Ordering::Relaxed).wrapping_add(1)
-            }
-
             /// Decrements the value by 1, returning the old value.
             ///
             /// Uses `Relaxed` ordering.
@@ -497,29 +474,6 @@ macro_rules! impl_atomic_integer {
             #[inline]
             pub fn fetch_dec(&self) -> $value_type {
                 self.inner.fetch_sub(1, Ordering::Relaxed)
-            }
-
-            /// Decrements the value by 1, returning the new value.
-            ///
-            /// Uses `Relaxed` ordering.
-            ///
-            /// # Returns
-            ///
-            /// The new value after decrementing.
-            ///
-            /// # Example
-            ///
-            /// ```rust
-            #[doc = concat!("use prism3_rust_concurrent::atomic::", stringify!($name), ";")]
-            ///
-            #[doc = concat!("let atomic = ", stringify!($name), "::new(10);")]
-            /// let new = atomic.fetch_dec_and_get();
-            /// assert_eq!(new, 9);
-            /// assert_eq!(atomic.load(), 9);
-            /// ```
-            #[inline]
-            pub fn fetch_dec_and_get(&self) -> $value_type {
-                self.inner.fetch_sub(1, Ordering::Relaxed).wrapping_sub(1)
             }
 
             /// Adds a delta to the value, returning the old value.
@@ -552,33 +506,6 @@ macro_rules! impl_atomic_integer {
             #[inline]
             pub fn fetch_add(&self, delta: $value_type) -> $value_type {
                 self.inner.fetch_add(delta, Ordering::Relaxed)
-            }
-
-            /// Adds a delta to the value, returning the new value.
-            ///
-            /// Uses `Relaxed` ordering.
-            ///
-            /// # Parameters
-            ///
-            /// * `delta` - The value to add.
-            ///
-            /// # Returns
-            ///
-            /// The new value after adding.
-            ///
-            /// # Example
-            ///
-            /// ```rust
-            #[doc = concat!("use prism3_rust_concurrent::atomic::", stringify!($name), ";")]
-            ///
-            #[doc = concat!("let atomic = ", stringify!($name), "::new(10);")]
-            /// let new = atomic.fetch_add_and_get(5);
-            /// assert_eq!(new, 15);
-            /// assert_eq!(atomic.load(), 15);
-            /// ```
-            #[inline]
-            pub fn fetch_add_and_get(&self, delta: $value_type) -> $value_type {
-                self.inner.fetch_add(delta, Ordering::Relaxed).wrapping_add(delta)
             }
 
             /// Subtracts a delta from the value, returning the old value.
@@ -681,33 +608,6 @@ macro_rules! impl_atomic_integer {
                 }
             }
 
-
-            /// Subtracts a delta from the value, returning the new value.
-            ///
-            /// Uses `Relaxed` ordering.
-            ///
-            /// # Parameters
-            ///
-            /// * `delta` - The value to subtract.
-            ///
-            /// # Returns
-            ///
-            /// The new value after subtracting.
-            ///
-            /// # Example
-            ///
-            /// ```rust
-            #[doc = concat!("use prism3_rust_concurrent::atomic::", stringify!($name), ";")]
-            ///
-            #[doc = concat!("let atomic = ", stringify!($name), "::new(10);")]
-            /// let new = atomic.fetch_sub_and_get(3);
-            /// assert_eq!(new, 7);
-            /// assert_eq!(atomic.load(), 7);
-            /// ```
-            #[inline]
-            pub fn fetch_sub_and_get(&self, delta: $value_type) -> $value_type {
-                self.inner.fetch_sub(delta, Ordering::Relaxed).wrapping_sub(delta)
-            }
 
             /// Performs bitwise AND, returning the old value.
             ///
@@ -831,29 +731,6 @@ macro_rules! impl_atomic_integer {
             #[inline]
             pub fn fetch_not(&self) -> $value_type {
                 self.inner.fetch_xor(!0, Ordering::AcqRel)
-            }
-
-            /// Performs bitwise NOT, returning the new value.
-            ///
-            /// This is a convenience method that performs bitwise NOT
-            /// and returns the result. Uses `AcqRel` ordering.
-            ///
-            /// # Returns
-            ///
-            /// The new value after the operation.
-            ///
-            /// # Example
-            ///
-            /// ```rust
-            #[doc = concat!("use prism3_rust_concurrent::atomic::", stringify!($name), ";")]
-            ///
-            #[doc = concat!("let atomic = ", stringify!($name), "::new(0b1010_0101);")]
-            /// let new = atomic.bit_not_and_get();
-            #[doc = concat!("assert_eq!(new, !0b1010_0101_", stringify!($value_type), ");")]
-            /// ```
-            #[inline]
-            pub fn bit_not_and_get(&self) -> $value_type {
-                !self.inner.fetch_xor(!0, Ordering::AcqRel)
             }
 
             /// Updates the value using a function, returning the old value.
@@ -980,39 +857,6 @@ macro_rules! impl_atomic_integer {
                 self.inner.fetch_max(value, Ordering::AcqRel)
             }
 
-            /// Sets the value to the maximum of the current value and the
-            /// given value, returning the new value.
-            ///
-            /// Uses `AcqRel` ordering.
-            ///
-            /// # Parameters
-            ///
-            /// * `value` - The value to compare with.
-            ///
-            /// # Returns
-            ///
-            /// The new value after the operation.
-            ///
-            /// # Example
-            ///
-            /// ```rust
-            #[doc = concat!("use prism3_rust_concurrent::atomic::", stringify!($name), ";")]
-            ///
-            #[doc = concat!("let atomic = ", stringify!($name), "::new(10);")]
-            /// let new = atomic.fetch_max_and_get(20);
-            /// assert_eq!(new, 20);
-            /// assert_eq!(atomic.load(), 20);
-            ///
-            /// let new = atomic.fetch_max_and_get(15);
-            /// assert_eq!(new, 20);
-            /// assert_eq!(atomic.load(), 20);
-            /// ```
-            #[inline]
-            pub fn fetch_max_and_get(&self, value: $value_type) -> $value_type {
-                let old = self.inner.fetch_max(value, Ordering::AcqRel);
-                if value > old { value } else { old }
-            }
-
             /// Sets the value to the minimum of the current value and the
             /// given value, returning the old value.
             ///
@@ -1041,39 +885,6 @@ macro_rules! impl_atomic_integer {
             #[inline]
             pub fn fetch_min(&self, value: $value_type) -> $value_type {
                 self.inner.fetch_min(value, Ordering::AcqRel)
-            }
-
-            /// Sets the value to the minimum of the current value and the
-            /// given value, returning the new value.
-            ///
-            /// Uses `AcqRel` ordering.
-            ///
-            /// # Parameters
-            ///
-            /// * `value` - The value to compare with.
-            ///
-            /// # Returns
-            ///
-            /// The new value after the operation.
-            ///
-            /// # Example
-            ///
-            /// ```rust
-            #[doc = concat!("use prism3_rust_concurrent::atomic::", stringify!($name), ";")]
-            ///
-            #[doc = concat!("let atomic = ", stringify!($name), "::new(10);")]
-            /// let new = atomic.fetch_min_and_get(5);
-            /// assert_eq!(new, 5);
-            /// assert_eq!(atomic.load(), 5);
-            ///
-            /// let new = atomic.fetch_min_and_get(8);
-            /// assert_eq!(new, 5);
-            /// assert_eq!(atomic.load(), 5);
-            /// ```
-            #[inline]
-            pub fn fetch_min_and_get(&self, value: $value_type) -> $value_type {
-                let old = self.inner.fetch_min(value, Ordering::AcqRel);
-                if value < old { value } else { old }
             }
 
             /// Gets a reference to the underlying standard library atomic
