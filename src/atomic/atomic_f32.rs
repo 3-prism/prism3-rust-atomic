@@ -20,15 +20,37 @@ use std::fmt;
 use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
 
-use crate::atomic::traits::{
-    Atomic,
-    UpdatableAtomic,
-};
+use crate::atomic::traits::Atomic;
+use crate::atomic::traits::AtomicNumber;
 
 /// Atomic 32-bit floating point number.
 ///
 /// Provides easy-to-use atomic operations with automatic memory ordering
 /// selection. Implemented using `AtomicU32` with bit conversion.
+///
+/// # Memory Ordering Strategy
+///
+/// This type uses the same memory ordering strategy as atomic integers:
+///
+/// - **Read operations** (`load`): Use `Acquire` ordering to ensure
+///   visibility of prior writes from other threads.
+///
+/// - **Write operations** (`store`): Use `Release` ordering to ensure
+///   visibility of prior writes to other threads.
+///
+/// - **Read-Modify-Write operations** (`swap`, `compare_set`): Use
+///   `AcqRel` ordering for full synchronization.
+///
+/// - **CAS-based arithmetic** (`fetch_add`, `fetch_sub`, etc.): Use
+///   `AcqRel` on success and `Acquire` on failure within the CAS loop.
+///   The loop ensures eventual consistency.
+///
+/// # Implementation Details
+///
+/// Since hardware doesn't provide native atomic floating-point operations,
+/// this type is implemented using `AtomicU32` with `f32::to_bits()` and
+/// `f32::from_bits()` conversions. This preserves bit patterns exactly,
+/// including special values like NaN and infinity.
 ///
 /// # Features
 ///
@@ -68,7 +90,7 @@ use crate::atomic::traits::{
 /// }
 ///
 /// // Note: Due to floating point precision, result may not be exactly 100.0
-/// let result = sum.get();
+/// let result = sum.load();
 /// assert!((result - 100.0).abs() < 0.01);
 /// ```
 ///
@@ -93,7 +115,7 @@ impl AtomicF32 {
     /// use prism3_rust_concurrent::atomic::AtomicF32;
     ///
     /// let atomic = AtomicF32::new(3.14);
-    /// assert_eq!(atomic.get(), 3.14);
+    /// assert_eq!(atomic.load(), 3.14);
     /// ```
     #[inline]
     pub fn new(value: f32) -> Self {
@@ -104,7 +126,11 @@ impl AtomicF32 {
 
     /// Gets the current value.
     ///
-    /// Uses `Acquire` ordering.
+    /// # Memory Ordering
+    ///
+    /// Uses `Acquire` ordering on the underlying `AtomicU32`. This ensures
+    /// that all writes from other threads that happened before a `Release`
+    /// store are visible after this load.
     ///
     /// # Returns
     ///
@@ -116,16 +142,20 @@ impl AtomicF32 {
     /// use prism3_rust_concurrent::atomic::AtomicF32;
     ///
     /// let atomic = AtomicF32::new(3.14);
-    /// assert_eq!(atomic.get(), 3.14);
+    /// assert_eq!(atomic.load(), 3.14);
     /// ```
     #[inline]
-    pub fn get(&self) -> f32 {
+    pub fn load(&self) -> f32 {
         f32::from_bits(self.inner.load(Ordering::Acquire))
     }
 
     /// Sets a new value.
     ///
-    /// Uses `Release` ordering.
+    /// # Memory Ordering
+    ///
+    /// Uses `Release` ordering on the underlying `AtomicU32`. This ensures
+    /// that all prior writes in this thread are visible to other threads
+    /// that perform an `Acquire` load.
     ///
     /// # Parameters
     ///
@@ -137,17 +167,20 @@ impl AtomicF32 {
     /// use prism3_rust_concurrent::atomic::AtomicF32;
     ///
     /// let atomic = AtomicF32::new(0.0);
-    /// atomic.set(3.14);
-    /// assert_eq!(atomic.get(), 3.14);
+    /// atomic.store(3.14);
+    /// assert_eq!(atomic.load(), 3.14);
     /// ```
     #[inline]
-    pub fn set(&self, value: f32) {
+    pub fn store(&self, value: f32) {
         self.inner.store(value.to_bits(), Ordering::Release);
     }
 
     /// Swaps the current value with a new value, returning the old value.
     ///
-    /// Uses `AcqRel` ordering.
+    /// # Memory Ordering
+    ///
+    /// Uses `AcqRel` ordering on the underlying `AtomicU32`. This provides
+    /// full synchronization for this read-modify-write operation.
     ///
     /// # Parameters
     ///
@@ -165,7 +198,7 @@ impl AtomicF32 {
     /// let atomic = AtomicF32::new(1.0);
     /// let old = atomic.swap(2.0);
     /// assert_eq!(old, 1.0);
-    /// assert_eq!(atomic.get(), 2.0);
+    /// assert_eq!(atomic.load(), 2.0);
     /// ```
     #[inline]
     pub fn swap(&self, value: f32) -> f32 {
@@ -178,7 +211,12 @@ impl AtomicF32 {
     /// `Ok(())`. Otherwise, returns `Err(actual)` where `actual` is the
     /// current value.
     ///
-    /// Uses `AcqRel` ordering on success and `Acquire` ordering on failure.
+    /// # Memory Ordering
+    ///
+    /// - **Success**: Uses `AcqRel` ordering on the underlying `AtomicU32`
+    ///   to ensure full synchronization when the exchange succeeds.
+    /// - **Failure**: Uses `Acquire` ordering to observe the actual value
+    ///   written by another thread.
     ///
     /// # Parameters
     ///
@@ -200,11 +238,11 @@ impl AtomicF32 {
     /// use prism3_rust_concurrent::atomic::AtomicF32;
     ///
     /// let atomic = AtomicF32::new(1.0);
-    /// assert!(atomic.compare_and_set(1.0, 2.0).is_ok());
-    /// assert_eq!(atomic.get(), 2.0);
+    /// assert!(atomic.compare_set(1.0, 2.0).is_ok());
+    /// assert_eq!(atomic.load(), 2.0);
     /// ```
     #[inline]
-    pub fn compare_and_set(&self, current: f32, new: f32) -> Result<(), f32> {
+    pub fn compare_set(&self, current: f32, new: f32) -> Result<(), f32> {
         self.inner
             .compare_exchange(
                 current.to_bits(),
@@ -238,17 +276,17 @@ impl AtomicF32 {
     /// use prism3_rust_concurrent::atomic::AtomicF32;
     ///
     /// let atomic = AtomicF32::new(1.0);
-    /// let mut current = atomic.get();
+    /// let mut current = atomic.load();
     /// loop {
-    ///     match atomic.compare_and_set_weak(current, current + 1.0) {
+    ///     match atomic.compare_set_weak(current, current + 1.0) {
     ///         Ok(_) => break,
     ///         Err(actual) => current = actual,
     ///     }
     /// }
-    /// assert_eq!(atomic.get(), 2.0);
+    /// assert_eq!(atomic.load(), 2.0);
     /// ```
     #[inline]
-    pub fn compare_and_set_weak(&self, current: f32, new: f32) -> Result<(), f32> {
+    pub fn compare_set_weak(&self, current: f32, new: f32) -> Result<(), f32> {
         self.inner
             .compare_exchange_weak(
                 current.to_bits(),
@@ -285,7 +323,7 @@ impl AtomicF32 {
     /// let atomic = AtomicF32::new(1.0);
     /// let prev = atomic.compare_and_exchange(1.0, 2.0);
     /// assert_eq!(prev, 1.0);
-    /// assert_eq!(atomic.get(), 2.0);
+    /// assert_eq!(atomic.load(), 2.0);
     /// ```
     #[inline]
     pub fn compare_and_exchange(&self, current: f32, new: f32) -> f32 {
@@ -322,7 +360,7 @@ impl AtomicF32 {
     /// use prism3_rust_concurrent::atomic::AtomicF32;
     ///
     /// let atomic = AtomicF32::new(1.0);
-    /// let mut current = atomic.get();
+    /// let mut current = atomic.load();
     /// loop {
     ///     let prev = atomic.compare_and_exchange_weak(current, current + 1.0);
     ///     if prev == current {
@@ -330,7 +368,7 @@ impl AtomicF32 {
     ///     }
     ///     current = prev;
     /// }
-    /// assert_eq!(atomic.get(), 2.0);
+    /// assert_eq!(atomic.load(), 2.0);
     /// ```
     #[inline]
     pub fn compare_and_exchange_weak(&self, current: f32, new: f32) -> f32 {
@@ -345,9 +383,18 @@ impl AtomicF32 {
         }
     }
 
-    /// Atomically adds a value, returning the new value.
+    /// Atomically adds a value, returning the old value.
     ///
-    /// Internally uses a CAS loop. May be slow in high-contention scenarios.
+    /// # Memory Ordering
+    ///
+    /// Internally uses a CAS loop with `compare_set_weak`, which uses
+    /// `AcqRel` on success and `Acquire` on failure. The loop ensures
+    /// eventual consistency even under high contention.
+    ///
+    /// # Performance
+    ///
+    /// May be slow in high-contention scenarios due to the CAS loop.
+    /// Consider using atomic integers if performance is critical.
     ///
     /// # Parameters
     ///
@@ -355,7 +402,7 @@ impl AtomicF32 {
     ///
     /// # Returns
     ///
-    /// The new value after adding.
+    /// The old value before adding.
     ///
     /// # Example
     ///
@@ -363,24 +410,29 @@ impl AtomicF32 {
     /// use prism3_rust_concurrent::atomic::AtomicF32;
     ///
     /// let atomic = AtomicF32::new(10.0);
-    /// let new = atomic.add(5.5);
-    /// assert_eq!(new, 15.5);
+    /// let old = atomic.fetch_add(5.5);
+    /// assert_eq!(old, 10.0);
+    /// assert_eq!(atomic.load(), 15.5);
     /// ```
     #[inline]
-    pub fn add(&self, delta: f32) -> f32 {
-        let mut current = self.get();
+    pub fn fetch_add(&self, delta: f32) -> f32 {
+        let mut current = self.load();
         loop {
             let new = current + delta;
-            match self.compare_and_set_weak(current, new) {
-                Ok(_) => return new,
+            match self.compare_set_weak(current, new) {
+                Ok(_) => return current,
                 Err(actual) => current = actual,
             }
         }
     }
 
-    /// Atomically subtracts a value, returning the new value.
+    /// Atomically subtracts a value, returning the old value.
     ///
-    /// Internally uses a CAS loop. May be slow in high-contention scenarios.
+    /// # Memory Ordering
+    ///
+    /// Internally uses a CAS loop with `compare_set_weak`, which uses
+    /// `AcqRel` on success and `Acquire` on failure. The loop ensures
+    /// eventual consistency even under high contention.
     ///
     /// # Parameters
     ///
@@ -388,7 +440,7 @@ impl AtomicF32 {
     ///
     /// # Returns
     ///
-    /// The new value after subtracting.
+    /// The old value before subtracting.
     ///
     /// # Example
     ///
@@ -396,24 +448,29 @@ impl AtomicF32 {
     /// use prism3_rust_concurrent::atomic::AtomicF32;
     ///
     /// let atomic = AtomicF32::new(10.0);
-    /// let new = atomic.sub(3.5);
-    /// assert_eq!(new, 6.5);
+    /// let old = atomic.fetch_sub(3.5);
+    /// assert_eq!(old, 10.0);
+    /// assert_eq!(atomic.load(), 6.5);
     /// ```
     #[inline]
-    pub fn sub(&self, delta: f32) -> f32 {
-        let mut current = self.get();
+    pub fn fetch_sub(&self, delta: f32) -> f32 {
+        let mut current = self.load();
         loop {
             let new = current - delta;
-            match self.compare_and_set_weak(current, new) {
-                Ok(_) => return new,
+            match self.compare_set_weak(current, new) {
+                Ok(_) => return current,
                 Err(actual) => current = actual,
             }
         }
     }
 
-    /// Atomically multiplies by a factor, returning the new value.
+    /// Atomically multiplies by a factor, returning the old value.
     ///
-    /// Internally uses a CAS loop. May be slow in high-contention scenarios.
+    /// # Memory Ordering
+    ///
+    /// Internally uses a CAS loop with `compare_set_weak`, which uses
+    /// `AcqRel` on success and `Acquire` on failure. The loop ensures
+    /// eventual consistency even under high contention.
     ///
     /// # Parameters
     ///
@@ -421,7 +478,7 @@ impl AtomicF32 {
     ///
     /// # Returns
     ///
-    /// The new value after multiplying.
+    /// The old value before multiplying.
     ///
     /// # Example
     ///
@@ -429,24 +486,29 @@ impl AtomicF32 {
     /// use prism3_rust_concurrent::atomic::AtomicF32;
     ///
     /// let atomic = AtomicF32::new(10.0);
-    /// let new = atomic.mul(2.5);
-    /// assert_eq!(new, 25.0);
+    /// let old = atomic.fetch_mul(2.5);
+    /// assert_eq!(old, 10.0);
+    /// assert_eq!(atomic.load(), 25.0);
     /// ```
     #[inline]
-    pub fn mul(&self, factor: f32) -> f32 {
-        let mut current = self.get();
+    pub fn fetch_mul(&self, factor: f32) -> f32 {
+        let mut current = self.load();
         loop {
             let new = current * factor;
-            match self.compare_and_set_weak(current, new) {
-                Ok(_) => return new,
+            match self.compare_set_weak(current, new) {
+                Ok(_) => return current,
                 Err(actual) => current = actual,
             }
         }
     }
 
-    /// Atomically divides by a divisor, returning the new value.
+    /// Atomically divides by a divisor, returning the old value.
     ///
-    /// Internally uses a CAS loop. May be slow in high-contention scenarios.
+    /// # Memory Ordering
+    ///
+    /// Internally uses a CAS loop with `compare_set_weak`, which uses
+    /// `AcqRel` on success and `Acquire` on failure. The loop ensures
+    /// eventual consistency even under high contention.
     ///
     /// # Parameters
     ///
@@ -454,7 +516,7 @@ impl AtomicF32 {
     ///
     /// # Returns
     ///
-    /// The new value after dividing.
+    /// The old value before dividing.
     ///
     /// # Example
     ///
@@ -462,16 +524,17 @@ impl AtomicF32 {
     /// use prism3_rust_concurrent::atomic::AtomicF32;
     ///
     /// let atomic = AtomicF32::new(10.0);
-    /// let new = atomic.div(2.0);
-    /// assert_eq!(new, 5.0);
+    /// let old = atomic.fetch_div(2.0);
+    /// assert_eq!(old, 10.0);
+    /// assert_eq!(atomic.load(), 5.0);
     /// ```
     #[inline]
-    pub fn div(&self, divisor: f32) -> f32 {
-        let mut current = self.get();
+    pub fn fetch_div(&self, divisor: f32) -> f32 {
+        let mut current = self.load();
         loop {
             let new = current / divisor;
-            match self.compare_and_set_weak(current, new) {
-                Ok(_) => return new,
+            match self.compare_set_weak(current, new) {
+                Ok(_) => return current,
                 Err(actual) => current = actual,
             }
         }
@@ -479,7 +542,11 @@ impl AtomicF32 {
 
     /// Updates the value using a function, returning the old value.
     ///
-    /// Internally uses a CAS loop until the update succeeds.
+    /// # Memory Ordering
+    ///
+    /// Internally uses a CAS loop with `compare_set_weak`, which uses
+    /// `AcqRel` on success and `Acquire` on failure. The loop ensures
+    /// eventual consistency even under high contention.
     ///
     /// # Parameters
     ///
@@ -496,57 +563,20 @@ impl AtomicF32 {
     /// use prism3_rust_concurrent::atomic::AtomicF32;
     ///
     /// let atomic = AtomicF32::new(10.0);
-    /// let old = atomic.get_and_update(|x| x * 2.0);
+    /// let old = atomic.fetch_update(|x| x * 2.0);
     /// assert_eq!(old, 10.0);
-    /// assert_eq!(atomic.get(), 20.0);
+    /// assert_eq!(atomic.load(), 20.0);
     /// ```
     #[inline]
-    pub fn get_and_update<F>(&self, f: F) -> f32
+    pub fn fetch_update<F>(&self, f: F) -> f32
     where
         F: Fn(f32) -> f32,
     {
-        let mut current = self.get();
+        let mut current = self.load();
         loop {
             let new = f(current);
-            match self.compare_and_set_weak(current, new) {
+            match self.compare_set_weak(current, new) {
                 Ok(_) => return current,
-                Err(actual) => current = actual,
-            }
-        }
-    }
-
-    /// Updates the value using a function, returning the new value.
-    ///
-    /// Internally uses a CAS loop until the update succeeds.
-    ///
-    /// # Parameters
-    ///
-    /// * `f` - A function that takes the current value and returns the new
-    ///   value.
-    ///
-    /// # Returns
-    ///
-    /// The new value after the update.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use prism3_rust_concurrent::atomic::AtomicF32;
-    ///
-    /// let atomic = AtomicF32::new(10.0);
-    /// let new = atomic.update_and_get(|x| x * 2.0);
-    /// assert_eq!(new, 20.0);
-    /// ```
-    #[inline]
-    pub fn update_and_get<F>(&self, f: F) -> f32
-    where
-        F: Fn(f32) -> f32,
-    {
-        let mut current = self.get();
-        loop {
-            let new = f(current);
-            match self.compare_and_set_weak(current, new) {
-                Ok(_) => return new,
                 Err(actual) => current = actual,
             }
         }
@@ -557,6 +587,12 @@ impl AtomicF32 {
     /// This allows direct access to the standard library's atomic operations
     /// for advanced use cases that require fine-grained control over memory
     /// ordering.
+    ///
+    /// # Memory Ordering
+    ///
+    /// When using the returned reference, you have full control over memory
+    /// ordering. Remember to use `f32::to_bits()` and `f32::from_bits()` for
+    /// conversions.
     ///
     /// # Returns
     ///
@@ -583,13 +619,13 @@ impl Atomic for AtomicF32 {
     type Value = f32;
 
     #[inline]
-    fn get(&self) -> f32 {
-        self.get()
+    fn load(&self) -> f32 {
+        self.load()
     }
 
     #[inline]
-    fn set(&self, value: f32) {
-        self.set(value);
+    fn store(&self, value: f32) {
+        self.store(value);
     }
 
     #[inline]
@@ -598,31 +634,53 @@ impl Atomic for AtomicF32 {
     }
 
     #[inline]
-    fn compare_and_set(&self, current: f32, new: f32) -> Result<(), f32> {
-        self.compare_and_set(current, new)
+    fn compare_set(&self, current: f32, new: f32) -> Result<(), f32> {
+        self.compare_set(current, new)
     }
 
     #[inline]
-    fn compare_and_exchange(&self, current: f32, new: f32) -> f32 {
+    fn compare_set_weak(&self, current: f32, new: f32) -> Result<(), f32> {
+        self.compare_set_weak(current, new)
+    }
+
+    #[inline]
+    fn compare_exchange(&self, current: f32, new: f32) -> f32 {
         self.compare_and_exchange(current, new)
+    }
+
+    #[inline]
+    fn compare_exchange_weak(&self, current: f32, new: f32) -> f32 {
+        self.compare_and_exchange_weak(current, new)
+    }
+
+    #[inline]
+    fn fetch_update<F>(&self, f: F) -> f32
+    where
+        F: Fn(f32) -> f32,
+    {
+        self.fetch_update(f)
     }
 }
 
-impl UpdatableAtomic for AtomicF32 {
+impl AtomicNumber for AtomicF32 {
     #[inline]
-    fn get_and_update<F>(&self, f: F) -> f32
-    where
-        F: Fn(f32) -> f32,
-    {
-        self.get_and_update(f)
+    fn fetch_add(&self, delta: f32) -> f32 {
+        self.fetch_add(delta)
     }
 
     #[inline]
-    fn update_and_get<F>(&self, f: F) -> f32
-    where
-        F: Fn(f32) -> f32,
-    {
-        self.update_and_get(f)
+    fn fetch_sub(&self, delta: f32) -> f32 {
+        self.fetch_sub(delta)
+    }
+
+    #[inline]
+    fn fetch_mul(&self, factor: f32) -> f32 {
+        self.fetch_mul(factor)
+    }
+
+    #[inline]
+    fn fetch_div(&self, divisor: f32) -> f32 {
+        self.fetch_div(divisor)
     }
 }
 
@@ -646,13 +704,13 @@ impl From<f32> for AtomicF32 {
 impl fmt::Debug for AtomicF32 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("AtomicF32")
-            .field("value", &self.get())
+            .field("value", &self.load())
             .finish()
     }
 }
 
 impl fmt::Display for AtomicF32 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.get())
+        write!(f, "{}", self.load())
     }
 }

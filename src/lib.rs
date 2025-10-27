@@ -29,19 +29,18 @@
 //!   `AtomicUsize`
 //! - Floating-point atomic types: `AtomicF32`, `AtomicF64`
 //! - Reference atomic type: `AtomicRef<T>`
-//! - Trait abstractions: `Atomic`, `UpdatableAtomic`, `AtomicInteger`
 //!
 //! ## Example
 //!
 //! ```rust
-//! use prism3_atomic::{AtomicI32, Atomic, AtomicInteger};
+//! use prism3_atomic::{AtomicI32, Atomic, AtomicNumber};
 //! use std::sync::Arc;
 //! use std::thread;
 //!
 //! // Basic usage
 //! let counter = AtomicI32::new(0);
-//! counter.increment_and_get();
-//! assert_eq!(counter.get(), 1);
+//! counter.fetch_inc();
+//! assert_eq!(counter.load(), 1);
 //!
 //! // Concurrent usage
 //! let counter = Arc::new(AtomicI32::new(0));
@@ -51,7 +50,7 @@
 //!     let counter = counter.clone();
 //!     let handle = thread::spawn(move || {
 //!         for _ in 0..100 {
-//!             counter.increment_and_get();
+//!             counter.fetch_inc();
 //!         }
 //!     });
 //!     handles.push(handle);
@@ -61,7 +60,7 @@
 //!     handle.join().unwrap();
 //! }
 //!
-//! assert_eq!(counter.get(), 1000);
+//! assert_eq!(counter.load(), 1000);
 //! ```
 //!
 //! ## Author
@@ -83,13 +82,12 @@ pub use atomic::{
     AtomicI32,
     AtomicI64,
     AtomicI8,
-    AtomicInteger,
     AtomicIsize,
+    AtomicNumber,
     AtomicRef,
     AtomicU16,
     AtomicU32,
     AtomicU64,
     AtomicU8,
     AtomicUsize,
-    UpdatableAtomic,
 };

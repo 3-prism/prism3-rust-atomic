@@ -60,6 +60,5 @@ pub use atomic_u8::AtomicU8;
 pub use atomic_usize::AtomicUsize;
 pub use traits::{
     Atomic,
-    AtomicInteger,
-    UpdatableAtomic,
+    AtomicNumber,
 };

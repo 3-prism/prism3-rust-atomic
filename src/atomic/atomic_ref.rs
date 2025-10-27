@@ -21,15 +21,36 @@ use std::sync::atomic::AtomicPtr;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use crate::atomic::traits::{
-    Atomic,
-    UpdatableAtomic,
-};
+use crate::atomic::traits::Atomic;
 
 /// Atomic reference type.
 ///
 /// Provides easy-to-use atomic operations on references with automatic memory
 /// ordering selection. Uses `Arc<T>` for thread-safe reference counting.
+///
+/// # Memory Ordering Strategy
+///
+/// This type uses the same memory ordering strategy as other atomic types:
+///
+/// - **Read operations** (`load`): Use `Acquire` ordering to ensure that
+///   all writes from other threads that happened before a `Release` store
+///   are visible after this load.
+///
+/// - **Write operations** (`store`): Use `Release` ordering to ensure that
+///   all prior writes in this thread are visible to other threads that
+///   perform an `Acquire` load.
+///
+/// - **Read-Modify-Write operations** (`swap`, `compare_set`): Use
+///   `AcqRel` ordering to combine both `Acquire` and `Release` semantics.
+///
+/// - **CAS failure**: Use `Acquire` ordering on failure to observe the
+///   actual value written by another thread.
+///
+/// # Implementation Details
+///
+/// This type stores an `Arc<T>` as a raw pointer in `AtomicPtr<T>`. All
+/// operations properly manage reference counts to prevent memory leaks or
+/// use-after-free errors.
 ///
 /// # Features
 ///
@@ -65,7 +86,7 @@ use crate::atomic::traits::{
 ///
 /// let old_config = atomic_config.swap(new_config);
 /// assert_eq!(old_config.timeout, 1000);
-/// assert_eq!(atomic_config.get().timeout, 2000);
+/// assert_eq!(atomic_config.load().timeout, 2000);
 /// ```
 ///
 /// # Author
@@ -90,7 +111,7 @@ impl<T> AtomicRef<T> {
     ///
     /// let data = Arc::new(42);
     /// let atomic = AtomicRef::new(data);
-    /// assert_eq!(*atomic.get(), 42);
+    /// assert_eq!(*atomic.load(), 42);
     /// ```
     #[inline]
     pub fn new(value: Arc<T>) -> Self {
@@ -102,7 +123,11 @@ impl<T> AtomicRef<T> {
 
     /// Gets the current reference.
     ///
-    /// Uses `Acquire` ordering.
+    /// # Memory Ordering
+    ///
+    /// Uses `Acquire` ordering. This ensures that all writes from other
+    /// threads that happened before a `Release` store are visible after
+    /// this load.
     ///
     /// # Returns
     ///
@@ -115,11 +140,11 @@ impl<T> AtomicRef<T> {
     /// use std::sync::Arc;
     ///
     /// let atomic = AtomicRef::new(Arc::new(42));
-    /// let value = atomic.get();
+    /// let value = atomic.load();
     /// assert_eq!(*value, 42);
     /// ```
     #[inline]
-    pub fn get(&self) -> Arc<T> {
+    pub fn load(&self) -> Arc<T> {
         let ptr = self.inner.load(Ordering::Acquire);
         unsafe {
             // Increment reference count but don't drop the original pointer
@@ -132,7 +157,10 @@ impl<T> AtomicRef<T> {
 
     /// Sets a new reference.
     ///
-    /// Uses `Release` ordering.
+    /// # Memory Ordering
+    ///
+    /// Uses `Release` ordering. This ensures that all prior writes in this
+    /// thread are visible to other threads that perform an `Acquire` load.
     ///
     /// # Parameters
     ///
@@ -145,11 +173,11 @@ impl<T> AtomicRef<T> {
     /// use std::sync::Arc;
     ///
     /// let atomic = AtomicRef::new(Arc::new(42));
-    /// atomic.set(Arc::new(100));
-    /// assert_eq!(*atomic.get(), 100);
+    /// atomic.store(Arc::new(100));
+    /// assert_eq!(*atomic.load(), 100);
     /// ```
     #[inline]
-    pub fn set(&self, value: Arc<T>) {
+    pub fn store(&self, value: Arc<T>) {
         let new_ptr = Arc::into_raw(value) as *mut T;
         let old_ptr = self.inner.swap(new_ptr, Ordering::AcqRel);
         unsafe {
@@ -163,7 +191,10 @@ impl<T> AtomicRef<T> {
     /// Swaps the current reference with a new reference, returning the old
     /// reference.
     ///
-    /// Uses `AcqRel` ordering.
+    /// # Memory Ordering
+    ///
+    /// Uses `AcqRel` ordering. This provides full synchronization for this
+    /// read-modify-write operation.
     ///
     /// # Parameters
     ///
@@ -182,7 +213,7 @@ impl<T> AtomicRef<T> {
     /// let atomic = AtomicRef::new(Arc::new(10));
     /// let old = atomic.swap(Arc::new(20));
     /// assert_eq!(*old, 10);
-    /// assert_eq!(*atomic.get(), 20);
+    /// assert_eq!(*atomic.load(), 20);
     /// ```
     #[inline]
     pub fn swap(&self, value: Arc<T>) -> Arc<T> {
@@ -197,7 +228,12 @@ impl<T> AtomicRef<T> {
     /// it to `new` and returns `Ok(())`. Otherwise, returns `Err(actual)`
     /// where `actual` is the current reference.
     ///
-    /// Uses `AcqRel` ordering on success and `Acquire` ordering on failure.
+    /// # Memory Ordering
+    ///
+    /// - **Success**: Uses `AcqRel` ordering to ensure full synchronization
+    ///   when the exchange succeeds.
+    /// - **Failure**: Uses `Acquire` ordering to observe the actual value
+    ///   written by another thread.
     ///
     /// # Parameters
     ///
@@ -219,13 +255,13 @@ impl<T> AtomicRef<T> {
     /// use std::sync::Arc;
     ///
     /// let atomic = AtomicRef::new(Arc::new(10));
-    /// let current = atomic.get();
+    /// let current = atomic.load();
     ///
-    /// assert!(atomic.compare_and_set(&current, Arc::new(20)).is_ok());
-    /// assert_eq!(*atomic.get(), 20);
+    /// assert!(atomic.compare_set(&current, Arc::new(20)).is_ok());
+    /// assert_eq!(*atomic.load(), 20);
     /// ```
     #[inline]
-    pub fn compare_and_set(&self, current: &Arc<T>, new: Arc<T>) -> Result<(), Arc<T>> {
+    pub fn compare_set(&self, current: &Arc<T>, new: Arc<T>) -> Result<(), Arc<T>> {
         let current_ptr = Arc::as_ptr(current) as *mut T;
         let new_ptr = Arc::into_raw(new) as *mut T;
 
@@ -268,17 +304,17 @@ impl<T> AtomicRef<T> {
     /// use std::sync::Arc;
     ///
     /// let atomic = AtomicRef::new(Arc::new(10));
-    /// let mut current = atomic.get();
+    /// let mut current = atomic.load();
     /// loop {
-    ///     match atomic.compare_and_set_weak(&current, Arc::new(20)) {
+    ///     match atomic.compare_set_weak(&current, Arc::new(20)) {
     ///         Ok(_) => break,
     ///         Err(actual) => current = actual,
     ///     }
     /// }
-    /// assert_eq!(*atomic.get(), 20);
+    /// assert_eq!(*atomic.load(), 20);
     /// ```
     #[inline]
-    pub fn compare_and_set_weak(&self, current: &Arc<T>, new: Arc<T>) -> Result<(), Arc<T>> {
+    pub fn compare_set_weak(&self, current: &Arc<T>, new: Arc<T>) -> Result<(), Arc<T>> {
         let current_ptr = Arc::as_ptr(current) as *mut T;
         let new_ptr = Arc::into_raw(new) as *mut T;
 
@@ -329,11 +365,11 @@ impl<T> AtomicRef<T> {
     /// use std::sync::Arc;
     ///
     /// let atomic = AtomicRef::new(Arc::new(10));
-    /// let current = atomic.get();
+    /// let current = atomic.load();
     ///
     /// let prev = atomic.compare_and_exchange(&current, Arc::new(20));
     /// assert!(Arc::ptr_eq(&prev, &current));
-    /// assert_eq!(*atomic.get(), 20);
+    /// assert_eq!(*atomic.load(), 20);
     /// ```
     #[inline]
     pub fn compare_and_exchange(&self, current: &Arc<T>, new: Arc<T>) -> Arc<T> {
@@ -379,7 +415,7 @@ impl<T> AtomicRef<T> {
     /// use std::sync::Arc;
     ///
     /// let atomic = AtomicRef::new(Arc::new(10));
-    /// let mut current = atomic.get();
+    /// let mut current = atomic.load();
     /// loop {
     ///     let prev =
     ///         atomic.compare_and_exchange_weak(&current, Arc::new(20));
@@ -388,7 +424,7 @@ impl<T> AtomicRef<T> {
     ///     }
     ///     current = prev;
     /// }
-    /// assert_eq!(*atomic.get(), 20);
+    /// assert_eq!(*atomic.load(), 20);
     /// ```
     #[inline]
     pub fn compare_and_exchange_weak(&self, current: &Arc<T>, new: Arc<T>) -> Arc<T> {
@@ -415,7 +451,11 @@ impl<T> AtomicRef<T> {
 
     /// Updates the reference using a function, returning the old reference.
     ///
-    /// Internally uses a CAS loop until the update succeeds.
+    /// # Memory Ordering
+    ///
+    /// Internally uses a CAS loop with `compare_set_weak`, which uses
+    /// `AcqRel` on success and `Acquire` on failure. The loop ensures
+    /// eventual consistency even under high contention.
     ///
     /// # Parameters
     ///
@@ -433,58 +473,20 @@ impl<T> AtomicRef<T> {
     /// use std::sync::Arc;
     ///
     /// let atomic = AtomicRef::new(Arc::new(10));
-    /// let old = atomic.get_and_update(|x| Arc::new(*x * 2));
+    /// let old = atomic.fetch_update(|x| Arc::new(*x * 2));
     /// assert_eq!(*old, 10);
-    /// assert_eq!(*atomic.get(), 20);
+    /// assert_eq!(*atomic.load(), 20);
     /// ```
     #[inline]
-    pub fn get_and_update<F>(&self, f: F) -> Arc<T>
+    pub fn fetch_update<F>(&self, f: F) -> Arc<T>
     where
         F: Fn(&Arc<T>) -> Arc<T>,
     {
-        let mut current = self.get();
+        let mut current = self.load();
         loop {
             let new = f(&current);
-            match self.compare_and_set_weak(&current, new) {
+            match self.compare_set_weak(&current, new) {
                 Ok(_) => return current,
-                Err(actual) => current = actual,
-            }
-        }
-    }
-
-    /// Updates the reference using a function, returning the new reference.
-    ///
-    /// Internally uses a CAS loop until the update succeeds.
-    ///
-    /// # Parameters
-    ///
-    /// * `f` - A function that takes the current reference and returns the
-    ///   new reference.
-    ///
-    /// # Returns
-    ///
-    /// The new reference after the update.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use prism3_rust_concurrent::atomic::AtomicRef;
-    /// use std::sync::Arc;
-    ///
-    /// let atomic = AtomicRef::new(Arc::new(10));
-    /// let new = atomic.update_and_get(|x| Arc::new(*x * 2));
-    /// assert_eq!(*new, 20);
-    /// ```
-    #[inline]
-    pub fn update_and_get<F>(&self, f: F) -> Arc<T>
-    where
-        F: Fn(&Arc<T>) -> Arc<T>,
-    {
-        let mut current = self.get();
-        loop {
-            let new = f(&current);
-            match self.compare_and_set_weak(&current, new.clone()) {
-                Ok(_) => return new,
                 Err(actual) => current = actual,
             }
         }
@@ -495,6 +497,12 @@ impl<T> AtomicRef<T> {
     /// This allows direct access to the standard library's atomic operations
     /// for advanced use cases that require fine-grained control over memory
     /// ordering.
+    ///
+    /// # Memory Ordering
+    ///
+    /// When using the returned reference, you have full control over memory
+    /// ordering. Choose the appropriate ordering based on your specific
+    /// synchronization requirements.
     ///
     /// # Returns
     ///
@@ -515,13 +523,13 @@ impl<T> Atomic for AtomicRef<T> {
     type Value = Arc<T>;
 
     #[inline]
-    fn get(&self) -> Arc<T> {
-        self.get()
+    fn load(&self) -> Arc<T> {
+        self.load()
     }
 
     #[inline]
-    fn set(&self, value: Arc<T>) {
-        self.set(value);
+    fn store(&self, value: Arc<T>) {
+        self.store(value);
     }
 
     #[inline]
@@ -530,31 +538,37 @@ impl<T> Atomic for AtomicRef<T> {
     }
 
     #[inline]
-    fn compare_and_set(&self, current: Arc<T>, new: Arc<T>) -> Result<(), Arc<T>> {
-        self.compare_and_set(&current, new)
+    fn compare_set(&self, current: Arc<T>, new: Arc<T>) -> Result<(), Arc<T>> {
+        self.compare_set(&current, new)
     }
 
     #[inline]
-    fn compare_and_exchange(&self, current: Arc<T>, new: Arc<T>) -> Arc<T> {
-        self.compare_and_exchange(&current, new)
+    fn compare_set_weak(&self, current: Arc<T>, new: Arc<T>) -> Result<(), Arc<T>> {
+        self.compare_set_weak(&current, new)
     }
-}
 
-impl<T> UpdatableAtomic for AtomicRef<T> {
     #[inline]
-    fn get_and_update<F>(&self, f: F) -> Arc<T>
+    fn compare_exchange(&self, current: Arc<T>, new: Arc<T>) -> Arc<T> {
+        match self.compare_set(&current, new.clone()) {
+            Ok(_) => current,
+            Err(_) => self.load(),
+        }
+    }
+
+    #[inline]
+    fn compare_exchange_weak(&self, current: Arc<T>, new: Arc<T>) -> Arc<T> {
+        match self.compare_set_weak(&current, new.clone()) {
+            Ok(_) => current,
+            Err(_) => self.load(),
+        }
+    }
+
+    #[inline]
+    fn fetch_update<F>(&self, f: F) -> Arc<T>
     where
         F: Fn(Arc<T>) -> Arc<T>,
     {
-        self.get_and_update(|x| f(x.clone()))
-    }
-
-    #[inline]
-    fn update_and_get<F>(&self, f: F) -> Arc<T>
-    where
-        F: Fn(Arc<T>) -> Arc<T>,
-    {
-        self.update_and_get(|x| f(x.clone()))
+        self.fetch_update(|x| f(x.clone()))
     }
 }
 
@@ -564,7 +578,7 @@ impl<T> Clone for AtomicRef<T> {
     /// Creates a new `AtomicRef` that initially points to the same value as
     /// the original, but subsequent atomic operations are independent.
     fn clone(&self) -> Self {
-        Self::new(self.get())
+        Self::new(self.load())
     }
 }
 
@@ -585,13 +599,13 @@ unsafe impl<T: Send + Sync> Sync for AtomicRef<T> {}
 impl<T: fmt::Debug> fmt::Debug for AtomicRef<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("AtomicRef")
-            .field("value", &self.get())
+            .field("value", &self.load())
             .finish()
     }
 }
 
 impl<T: fmt::Display> fmt::Display for AtomicRef<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.get())
+        write!(f, "{}", self.load())
     }
 }

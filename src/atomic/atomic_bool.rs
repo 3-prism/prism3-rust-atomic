@@ -27,6 +27,28 @@ use crate::atomic::traits::Atomic;
 /// Provides easy-to-use atomic operations with automatic memory ordering
 /// selection. All methods are thread-safe and can be shared across threads.
 ///
+/// # Memory Ordering Strategy
+///
+/// This type uses carefully selected default memory orderings:
+///
+/// - **Read operations** (`load`): Use `Acquire` ordering to ensure that
+///   all writes from other threads that happened before a `Release` store
+///   are visible after this load.
+///
+/// - **Write operations** (`store`): Use `Release` ordering to ensure that
+///   all prior writes in this thread are visible to other threads that
+///   perform an `Acquire` load.
+///
+/// - **Read-Modify-Write operations** (`swap`, `compare_set`, `fetch_*`):
+///   Use `AcqRel` ordering to combine both `Acquire` and `Release`
+///   semantics, ensuring proper synchronization in both directions.
+///
+/// - **CAS failure**: Use `Acquire` ordering on failure to observe the
+///   actual value written by another thread.
+///
+/// These orderings provide a balance between performance and correctness
+/// for typical concurrent programming patterns.
+///
 /// # Features
 ///
 /// - Automatic memory ordering selection
@@ -45,11 +67,11 @@ use crate::atomic::traits::Atomic;
 /// let flag_clone = flag.clone();
 ///
 /// let handle = thread::spawn(move || {
-///     flag_clone.set(true);
+///     flag_clone.store(true);
 /// });
 ///
 /// handle.join().unwrap();
-/// assert_eq!(flag.get(), true);
+/// assert_eq!(flag.load(), true);
 /// ```
 ///
 /// # Author
@@ -73,7 +95,7 @@ impl AtomicBool {
     /// use prism3_rust_concurrent::atomic::AtomicBool;
     ///
     /// let flag = AtomicBool::new(false);
-    /// assert_eq!(flag.get(), false);
+    /// assert_eq!(flag.load(), false);
     /// ```
     #[inline]
     pub const fn new(value: bool) -> Self {
@@ -84,7 +106,16 @@ impl AtomicBool {
 
     /// Gets the current value.
     ///
-    /// Uses `Acquire` ordering.
+    /// # Memory Ordering
+    ///
+    /// Uses `Acquire` ordering. This ensures that:
+    /// - All writes from other threads that happened before a `Release`
+    ///   store are visible after this load.
+    /// - Forms a synchronizes-with relationship with `Release` stores.
+    /// - Prevents reordering of subsequent reads/writes before this load.
+    ///
+    /// This is appropriate for reading shared state that may have been
+    /// modified by other threads.
     ///
     /// # Returns
     ///
@@ -96,16 +127,24 @@ impl AtomicBool {
     /// use prism3_rust_concurrent::atomic::AtomicBool;
     ///
     /// let flag = AtomicBool::new(true);
-    /// assert_eq!(flag.get(), true);
+    /// assert_eq!(flag.load(), true);
     /// ```
     #[inline]
-    pub fn get(&self) -> bool {
+    pub fn load(&self) -> bool {
         self.inner.load(Ordering::Acquire)
     }
 
     /// Sets a new value.
     ///
-    /// Uses `Release` ordering.
+    /// # Memory Ordering
+    ///
+    /// Uses `Release` ordering. This ensures that:
+    /// - All prior writes in this thread are visible to other threads that
+    ///   perform an `Acquire` load.
+    /// - Forms a synchronizes-with relationship with `Acquire` loads.
+    /// - Prevents reordering of prior reads/writes after this store.
+    ///
+    /// This is appropriate for publishing shared state to other threads.
     ///
     /// # Parameters
     ///
@@ -117,17 +156,25 @@ impl AtomicBool {
     /// use prism3_rust_concurrent::atomic::AtomicBool;
     ///
     /// let flag = AtomicBool::new(false);
-    /// flag.set(true);
-    /// assert_eq!(flag.get(), true);
+    /// flag.store(true);
+    /// assert_eq!(flag.load(), true);
     /// ```
     #[inline]
-    pub fn set(&self, value: bool) {
+    pub fn store(&self, value: bool) {
         self.inner.store(value, Ordering::Release);
     }
 
     /// Swaps the current value with a new value, returning the old value.
     ///
-    /// Uses `AcqRel` ordering.
+    /// # Memory Ordering
+    ///
+    /// Uses `AcqRel` ordering. This ensures that:
+    /// - **Acquire**: All writes from other threads that happened before
+    ///   their `Release` operations are visible after this operation.
+    /// - **Release**: All prior writes in this thread are visible to other
+    ///   threads that perform subsequent `Acquire` operations.
+    ///
+    /// This provides full synchronization for read-modify-write operations.
     ///
     /// # Parameters
     ///
@@ -145,7 +192,7 @@ impl AtomicBool {
     /// let flag = AtomicBool::new(false);
     /// let old = flag.swap(true);
     /// assert_eq!(old, false);
-    /// assert_eq!(flag.get(), true);
+    /// assert_eq!(flag.load(), true);
     /// ```
     #[inline]
     pub fn swap(&self, value: bool) -> bool {
@@ -158,7 +205,15 @@ impl AtomicBool {
     /// `Ok(())`. Otherwise, returns `Err(actual)` where `actual` is the
     /// current value.
     ///
-    /// Uses `AcqRel` ordering on success and `Acquire` ordering on failure.
+    /// # Memory Ordering
+    ///
+    /// - **Success**: Uses `AcqRel` ordering to ensure full synchronization
+    ///   when the exchange succeeds.
+    /// - **Failure**: Uses `Acquire` ordering to observe the actual value
+    ///   written by another thread.
+    ///
+    /// This pattern is essential for implementing lock-free algorithms where
+    /// you need to retry based on the observed value.
     ///
     /// # Parameters
     ///
@@ -175,14 +230,14 @@ impl AtomicBool {
     /// use prism3_rust_concurrent::atomic::AtomicBool;
     ///
     /// let flag = AtomicBool::new(false);
-    /// assert!(flag.compare_and_set(false, true).is_ok());
-    /// assert_eq!(flag.get(), true);
+    /// assert!(flag.compare_set(false, true).is_ok());
+    /// assert_eq!(flag.load(), true);
     ///
     /// // Fails because current value is true, not false
-    /// assert!(flag.compare_and_set(false, false).is_err());
+    /// assert!(flag.compare_set(false, false).is_err());
     /// ```
     #[inline]
-    pub fn compare_and_set(&self, current: bool, new: bool) -> Result<(), bool> {
+    pub fn compare_set(&self, current: bool, new: bool) -> Result<(), bool> {
         self.inner
             .compare_exchange(current, new, Ordering::AcqRel, Ordering::Acquire)
             .map(|_| ())
@@ -210,17 +265,17 @@ impl AtomicBool {
     /// use prism3_rust_concurrent::atomic::AtomicBool;
     ///
     /// let flag = AtomicBool::new(false);
-    /// let mut current = flag.get();
+    /// let mut current = flag.load();
     /// loop {
-    ///     match flag.compare_and_set_weak(current, true) {
+    ///     match flag.compare_set_weak(current, true) {
     ///         Ok(_) => break,
     ///         Err(actual) => current = actual,
     ///     }
     /// }
-    /// assert_eq!(flag.get(), true);
+    /// assert_eq!(flag.load(), true);
     /// ```
     #[inline]
-    pub fn compare_and_set_weak(&self, current: bool, new: bool) -> Result<(), bool> {
+    pub fn compare_set_weak(&self, current: bool, new: bool) -> Result<(), bool> {
         self.inner
             .compare_exchange_weak(current, new, Ordering::AcqRel, Ordering::Acquire)
             .map(|_| ())
@@ -251,7 +306,7 @@ impl AtomicBool {
     /// let flag = AtomicBool::new(false);
     /// let prev = flag.compare_and_exchange(false, true);
     /// assert_eq!(prev, false);
-    /// assert_eq!(flag.get(), true);
+    /// assert_eq!(flag.load(), true);
     /// ```
     #[inline]
     pub fn compare_and_exchange(&self, current: bool, new: bool) -> bool {
@@ -286,7 +341,7 @@ impl AtomicBool {
     /// use prism3_rust_concurrent::atomic::AtomicBool;
     ///
     /// let flag = AtomicBool::new(false);
-    /// let mut current = flag.get();
+    /// let mut current = flag.load();
     /// loop {
     ///     let prev = flag.compare_and_exchange_weak(current, true);
     ///     if prev == current {
@@ -294,7 +349,7 @@ impl AtomicBool {
     ///     }
     ///     current = prev;
     /// }
-    /// assert_eq!(flag.get(), true);
+    /// assert_eq!(flag.load(), true);
     /// ```
     #[inline]
     pub fn compare_and_exchange_weak(&self, current: bool, new: bool) -> bool {
@@ -309,7 +364,11 @@ impl AtomicBool {
 
     /// Atomically sets the value to `true`, returning the old value.
     ///
-    /// Uses `AcqRel` ordering.
+    /// # Memory Ordering
+    ///
+    /// Uses `AcqRel` ordering (via `swap`). This ensures full
+    /// synchronization with other threads for this read-modify-write
+    /// operation.
     ///
     /// # Returns
     ///
@@ -321,42 +380,22 @@ impl AtomicBool {
     /// use prism3_rust_concurrent::atomic::AtomicBool;
     ///
     /// let flag = AtomicBool::new(false);
-    /// let old = flag.get_and_set();
+    /// let old = flag.fetch_set();
     /// assert_eq!(old, false);
-    /// assert_eq!(flag.get(), true);
+    /// assert_eq!(flag.load(), true);
     /// ```
     #[inline]
-    pub fn get_and_set(&self) -> bool {
+    pub fn fetch_set(&self) -> bool {
         self.swap(true)
-    }
-
-    /// Atomically sets the value to `true`, returning the new value.
-    ///
-    /// Uses `AcqRel` ordering.
-    ///
-    /// # Returns
-    ///
-    /// Always returns `true`.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use prism3_rust_concurrent::atomic::AtomicBool;
-    ///
-    /// let flag = AtomicBool::new(false);
-    /// let new = flag.set_and_get();
-    /// assert_eq!(new, true);
-    /// assert_eq!(flag.get(), true);
-    /// ```
-    #[inline]
-    pub fn set_and_get(&self) -> bool {
-        self.swap(true);
-        true
     }
 
     /// Atomically sets the value to `false`, returning the old value.
     ///
-    /// Uses `AcqRel` ordering.
+    /// # Memory Ordering
+    ///
+    /// Uses `AcqRel` ordering (via `swap`). This ensures full
+    /// synchronization with other threads for this read-modify-write
+    /// operation.
     ///
     /// # Returns
     ///
@@ -368,42 +407,21 @@ impl AtomicBool {
     /// use prism3_rust_concurrent::atomic::AtomicBool;
     ///
     /// let flag = AtomicBool::new(true);
-    /// let old = flag.get_and_clear();
+    /// let old = flag.fetch_clear();
     /// assert_eq!(old, true);
-    /// assert_eq!(flag.get(), false);
+    /// assert_eq!(flag.load(), false);
     /// ```
     #[inline]
-    pub fn get_and_clear(&self) -> bool {
+    pub fn fetch_clear(&self) -> bool {
         self.swap(false)
-    }
-
-    /// Atomically sets the value to `false`, returning the new value.
-    ///
-    /// Uses `AcqRel` ordering.
-    ///
-    /// # Returns
-    ///
-    /// Always returns `false`.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use prism3_rust_concurrent::atomic::AtomicBool;
-    ///
-    /// let flag = AtomicBool::new(true);
-    /// let new = flag.clear_and_get();
-    /// assert_eq!(new, false);
-    /// assert_eq!(flag.get(), false);
-    /// ```
-    #[inline]
-    pub fn clear_and_get(&self) -> bool {
-        self.swap(false);
-        false
     }
 
     /// Atomically negates the value, returning the old value.
     ///
-    /// Uses `AcqRel` ordering.
+    /// # Memory Ordering
+    ///
+    /// Uses `AcqRel` ordering. This ensures full synchronization with other
+    /// threads for this read-modify-write operation.
     ///
     /// # Returns
     ///
@@ -415,41 +433,23 @@ impl AtomicBool {
     /// use prism3_rust_concurrent::atomic::AtomicBool;
     ///
     /// let flag = AtomicBool::new(false);
-    /// assert_eq!(flag.get_and_negate(), false);
-    /// assert_eq!(flag.get(), true);
-    /// assert_eq!(flag.get_and_negate(), true);
-    /// assert_eq!(flag.get(), false);
+    /// assert_eq!(flag.fetch_not(), false);
+    /// assert_eq!(flag.load(), true);
+    /// assert_eq!(flag.fetch_not(), true);
+    /// assert_eq!(flag.load(), false);
     /// ```
     #[inline]
-    pub fn get_and_negate(&self) -> bool {
+    pub fn fetch_not(&self) -> bool {
         self.inner.fetch_xor(true, Ordering::AcqRel)
-    }
-
-    /// Atomically negates the value, returning the new value.
-    ///
-    /// Uses `AcqRel` ordering.
-    ///
-    /// # Returns
-    ///
-    /// The new value after negation.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use prism3_rust_concurrent::atomic::AtomicBool;
-    ///
-    /// let flag = AtomicBool::new(false);
-    /// assert_eq!(flag.negate_and_get(), true);
-    /// assert_eq!(flag.get(), true);
-    /// ```
-    #[inline]
-    pub fn negate_and_get(&self) -> bool {
-        !self.inner.fetch_xor(true, Ordering::AcqRel)
     }
 
     /// Atomically performs logical AND, returning the old value.
     ///
-    /// Uses `AcqRel` ordering.
+    /// # Memory Ordering
+    ///
+    /// Uses `AcqRel` ordering. This ensures full synchronization with other
+    /// threads for this read-modify-write operation, which is necessary
+    /// because the operation depends on the current value.
     ///
     /// # Parameters
     ///
@@ -465,17 +465,21 @@ impl AtomicBool {
     /// use prism3_rust_concurrent::atomic::AtomicBool;
     ///
     /// let flag = AtomicBool::new(true);
-    /// assert_eq!(flag.get_and_logical_and(false), true);
-    /// assert_eq!(flag.get(), false);
+    /// assert_eq!(flag.fetch_and(false), true);
+    /// assert_eq!(flag.load(), false);
     /// ```
     #[inline]
-    pub fn get_and_logical_and(&self, value: bool) -> bool {
+    pub fn fetch_and(&self, value: bool) -> bool {
         self.inner.fetch_and(value, Ordering::AcqRel)
     }
 
     /// Atomically performs logical OR, returning the old value.
     ///
-    /// Uses `AcqRel` ordering.
+    /// # Memory Ordering
+    ///
+    /// Uses `AcqRel` ordering. This ensures full synchronization with other
+    /// threads for this read-modify-write operation, which is necessary
+    /// because the operation depends on the current value.
     ///
     /// # Parameters
     ///
@@ -491,17 +495,21 @@ impl AtomicBool {
     /// use prism3_rust_concurrent::atomic::AtomicBool;
     ///
     /// let flag = AtomicBool::new(false);
-    /// assert_eq!(flag.get_and_logical_or(true), false);
-    /// assert_eq!(flag.get(), true);
+    /// assert_eq!(flag.fetch_or(true), false);
+    /// assert_eq!(flag.load(), true);
     /// ```
     #[inline]
-    pub fn get_and_logical_or(&self, value: bool) -> bool {
+    pub fn fetch_or(&self, value: bool) -> bool {
         self.inner.fetch_or(value, Ordering::AcqRel)
     }
 
     /// Atomically performs logical XOR, returning the old value.
     ///
-    /// Uses `AcqRel` ordering.
+    /// # Memory Ordering
+    ///
+    /// Uses `AcqRel` ordering. This ensures full synchronization with other
+    /// threads for this read-modify-write operation, which is necessary
+    /// because the operation depends on the current value.
     ///
     /// # Parameters
     ///
@@ -517,11 +525,11 @@ impl AtomicBool {
     /// use prism3_rust_concurrent::atomic::AtomicBool;
     ///
     /// let flag = AtomicBool::new(false);
-    /// assert_eq!(flag.get_and_logical_xor(true), false);
-    /// assert_eq!(flag.get(), true);
+    /// assert_eq!(flag.fetch_xor(true), false);
+    /// assert_eq!(flag.load(), true);
     /// ```
     #[inline]
-    pub fn get_and_logical_xor(&self, value: bool) -> bool {
+    pub fn fetch_xor(&self, value: bool) -> bool {
         self.inner.fetch_xor(value, Ordering::AcqRel)
     }
 
@@ -544,15 +552,15 @@ impl AtomicBool {
     /// use prism3_rust_concurrent::atomic::AtomicBool;
     ///
     /// let flag = AtomicBool::new(false);
-    /// assert!(flag.compare_and_set_if_false(true).is_ok());
-    /// assert_eq!(flag.get(), true);
+    /// assert!(flag.set_if_false(true).is_ok());
+    /// assert_eq!(flag.load(), true);
     ///
     /// // Second attempt fails
-    /// assert!(flag.compare_and_set_if_false(true).is_err());
+    /// assert!(flag.set_if_false(true).is_err());
     /// ```
     #[inline]
-    pub fn compare_and_set_if_false(&self, new: bool) -> Result<(), bool> {
-        self.compare_and_set(false, new)
+    pub fn set_if_false(&self, new: bool) -> Result<(), bool> {
+        self.compare_set(false, new)
     }
 
     /// Conditionally sets the value if it is currently `true`.
@@ -574,15 +582,15 @@ impl AtomicBool {
     /// use prism3_rust_concurrent::atomic::AtomicBool;
     ///
     /// let flag = AtomicBool::new(true);
-    /// assert!(flag.compare_and_set_if_true(false).is_ok());
-    /// assert_eq!(flag.get(), false);
+    /// assert!(flag.set_if_true(false).is_ok());
+    /// assert_eq!(flag.load(), false);
     ///
     /// // Second attempt fails
-    /// assert!(flag.compare_and_set_if_true(false).is_err());
+    /// assert!(flag.set_if_true(false).is_err());
     /// ```
     #[inline]
-    pub fn compare_and_set_if_true(&self, new: bool) -> Result<(), bool> {
-        self.compare_and_set(true, new)
+    pub fn set_if_true(&self, new: bool) -> Result<(), bool> {
+        self.compare_set(true, new)
     }
 
     /// Gets a reference to the underlying standard library atomic type.
@@ -590,6 +598,12 @@ impl AtomicBool {
     /// This allows direct access to the standard library's atomic operations
     /// for advanced use cases that require fine-grained control over memory
     /// ordering.
+    ///
+    /// # Memory Ordering
+    ///
+    /// When using the returned reference, you have full control over memory
+    /// ordering. Choose the appropriate ordering based on your specific
+    /// synchronization requirements.
     ///
     /// # Returns
     ///
@@ -615,13 +629,13 @@ impl Atomic for AtomicBool {
     type Value = bool;
 
     #[inline]
-    fn get(&self) -> bool {
-        self.get()
+    fn load(&self) -> bool {
+        self.load()
     }
 
     #[inline]
-    fn set(&self, value: bool) {
-        self.set(value);
+    fn store(&self, value: bool) {
+        self.store(value);
     }
 
     #[inline]
@@ -630,13 +644,38 @@ impl Atomic for AtomicBool {
     }
 
     #[inline]
-    fn compare_and_set(&self, current: bool, new: bool) -> Result<(), bool> {
-        self.compare_and_set(current, new)
+    fn compare_set(&self, current: bool, new: bool) -> Result<(), bool> {
+        self.compare_set(current, new)
     }
 
     #[inline]
-    fn compare_and_exchange(&self, current: bool, new: bool) -> bool {
+    fn compare_set_weak(&self, current: bool, new: bool) -> Result<(), bool> {
+        self.compare_set_weak(current, new)
+    }
+
+    #[inline]
+    fn compare_exchange(&self, current: bool, new: bool) -> bool {
         self.compare_and_exchange(current, new)
+    }
+
+    #[inline]
+    fn compare_exchange_weak(&self, current: bool, new: bool) -> bool {
+        self.compare_and_exchange_weak(current, new)
+    }
+
+    #[inline]
+    fn fetch_update<F>(&self, f: F) -> bool
+    where
+        F: Fn(bool) -> bool,
+    {
+        let mut current = self.load();
+        loop {
+            let new = f(current);
+            match self.compare_set_weak(current, new) {
+                Ok(_) => return current,
+                Err(actual) => current = actual,
+            }
+        }
     }
 }
 
@@ -660,13 +699,13 @@ impl From<bool> for AtomicBool {
 impl fmt::Debug for AtomicBool {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("AtomicBool")
-            .field("value", &self.get())
+            .field("value", &self.load())
             .finish()
     }
 }
 
 impl fmt::Display for AtomicBool {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.get())
+        write!(f, "{}", self.load())
     }
 }
